@@ -1,0 +1,7 @@
+{
+  "pages": [
+    { "path": "pages/home/index", "style": { "navigationBarTitleText": "今日经营" } },
+    { "path": "pages/tasks/index", "style": { "navigationBarTitleText": "Agent 任务" } }
+  ],
+  "globalStyle": { "navigationBarTextStyle": "black", "navigationBarBackgroundColor": "#f7f7fb", "backgroundColor": "#f7f7fb" }
+}

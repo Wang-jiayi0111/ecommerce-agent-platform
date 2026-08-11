@@ -1,0 +1,1084 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "E-commerce Operations Intelligence Agent API",
+    "description": "电商智能运营 Agent 平台 API。关键结论证据化，节点状态可恢复，正式商品方案等写操作必须审批且满足幂等约束。",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/agent/tasks": {
+      "post": {
+        "tags": [
+          "Agent 任务"
+        ],
+        "summary": "Create Task",
+        "operationId": "create_task_api_v1_agent_tasks_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTask"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Agent 任务"
+        ],
+        "summary": "List Tasks",
+        "operationId": "list_tasks_api_v1_agent_tasks_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TaskStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTaskList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent/tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "Agent 任务"
+        ],
+        "summary": "Get Task",
+        "operationId": "get_task_api_v1_agent_tasks__task_id__get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTask"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent/tasks/{task_id}/events": {
+      "get": {
+        "tags": [
+          "Agent 任务"
+        ],
+        "summary": "Task Events",
+        "operationId": "task_events_api_v1_agent_tasks__task_id__events_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent/tasks/{task_id}/cancel": {
+      "post": {
+        "tags": [
+          "Agent 任务"
+        ],
+        "summary": "Cancel Task",
+        "operationId": "cancel_task_api_v1_agent_tasks__task_id__cancel_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTask"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/approvals/{task_id}/approve": {
+      "post": {
+        "tags": [
+          "审批"
+        ],
+        "summary": "Approve",
+        "operationId": "approve_api_v1_approvals__task_id__approve_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTask"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/approvals/{task_id}/reject": {
+      "post": {
+        "tags": [
+          "审批"
+        ],
+        "summary": "Reject",
+        "operationId": "reject_api_v1_approvals__task_id__reject_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTask"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dashboard/overview": {
+      "get": {
+        "tags": [
+          "经营总览"
+        ],
+        "summary": "Overview",
+        "operationId": "overview_api_v1_dashboard_overview_get",
+        "parameters": [
+          {
+            "name": "shop_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "default": "amazon-us-demo",
+              "title": "Shop Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardOverview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/products": {
+      "get": {
+        "tags": [
+          "商品"
+        ],
+        "summary": "List Products",
+        "operationId": "list_products_api_v1_products_get",
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Keyword"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Products Api V1 Products Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/market": {
+      "get": {
+        "tags": [
+          "分析"
+        ],
+        "summary": "Market",
+        "operationId": "market_api_v1_analytics_market_get",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Category"
+            }
+          },
+          {
+            "name": "market",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "US",
+              "title": "Market"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Market Api V1 Analytics Market Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/operations": {
+      "get": {
+        "tags": [
+          "分析"
+        ],
+        "summary": "Operations",
+        "operationId": "operations_api_v1_analytics_operations_get",
+        "parameters": [
+          {
+            "name": "shop_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Shop Id"
+            }
+          },
+          {
+            "name": "sku",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sku"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Operations Api V1 Analytics Operations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/search": {
+      "post": {
+        "tags": [
+          "知识库"
+        ],
+        "summary": "Search",
+        "operationId": "search_api_v1_knowledge_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Search Api V1 Knowledge Search Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AgentResult": {
+        "properties": {
+          "result_type": {
+            "type": "string",
+            "title": "Result Type"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "facts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Facts"
+          },
+          "inferences": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Inferences"
+          },
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Actions"
+          },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "type": "array",
+            "title": "Evidence Refs"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "default": 0.65
+          },
+          "requires_approval": {
+            "type": "boolean",
+            "title": "Requires Approval",
+            "default": false
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          }
+        },
+        "type": "object",
+        "required": [
+          "result_type",
+          "summary"
+        ],
+        "title": "AgentResult"
+      },
+      "AgentTask": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus",
+            "default": "PENDING"
+          },
+          "current_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Step"
+          },
+          "retry_count": {
+            "type": "integer",
+            "title": "Retry Count",
+            "default": 0
+          },
+          "state_version": {
+            "type": "integer",
+            "title": "State Version",
+            "default": 1
+          },
+          "request": {
+            "$ref": "#/components/schemas/TaskCreate"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "approval_status": {
+            "$ref": "#/components/schemas/ApprovalStatus",
+            "default": "NOT_REQUIRED"
+          },
+          "approval_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Hash"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Events"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request"
+        ],
+        "title": "AgentTask"
+      },
+      "AgentTaskList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AgentTask"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "AgentTaskList"
+      },
+      "ApprovalStatus": {
+        "type": "string",
+        "enum": [
+          "NOT_REQUIRED",
+          "WAITING_APPROVAL",
+          "APPROVED",
+          "REJECTED"
+        ],
+        "title": "ApprovalStatus"
+      },
+      "DashboardOverview": {
+        "properties": {
+          "shop_id": {
+            "type": "string",
+            "title": "Shop Id"
+          },
+          "data_cutoff": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Data Cutoff"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricCard"
+            },
+            "type": "array",
+            "title": "Metrics"
+          },
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/OperatingAlert"
+            },
+            "type": "array",
+            "title": "Alerts"
+          },
+          "pending_approval_count": {
+            "type": "integer",
+            "title": "Pending Approval Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "shop_id",
+          "data_cutoff",
+          "metrics",
+          "alerts",
+          "pending_approval_count"
+        ],
+        "title": "DashboardOverview"
+      },
+      "EvidenceRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "grade": {
+            "type": "string",
+            "pattern": "^[ABCD]$",
+            "title": "Grade"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "grade",
+          "source",
+          "summary"
+        ],
+        "title": "EvidenceRef"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "KnowledgeSearchRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 2,
+            "title": "Query"
+          },
+          "filters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Filters"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "KnowledgeSearchRequest"
+      },
+      "MetricCard": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          },
+          "display_value": {
+            "type": "string",
+            "title": "Display Value"
+          },
+          "change_display": {
+            "type": "string",
+            "title": "Change Display"
+          },
+          "trend": {
+            "type": "string",
+            "pattern": "^(up|down|flat)$",
+            "title": "Trend"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "label",
+          "value",
+          "display_value",
+          "change_display",
+          "trend"
+        ],
+        "title": "MetricCard"
+      },
+      "OperatingAlert": {
+        "properties": {
+          "severity": {
+            "type": "string",
+            "pattern": "^(critical|high|medium|low)$",
+            "title": "Severity"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "module": {
+            "type": "string",
+            "title": "Module"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "severity",
+          "title",
+          "description",
+          "module",
+          "occurred_at"
+        ],
+        "title": "OperatingAlert"
+      },
+      "TaskCreate": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Tenant Id"
+          },
+          "user_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "User Id",
+            "default": "local-user"
+          },
+          "user_query": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 5,
+            "title": "User Query"
+          },
+          "intent": {
+            "type": "string",
+            "title": "Intent",
+            "default": "market_entry"
+          },
+          "business_context": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Business Context"
+          },
+          "constraints": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Constraints"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/TaskPriority",
+            "default": "MEDIUM"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "user_query"
+        ],
+        "title": "TaskCreate"
+      },
+      "TaskPriority": {
+        "type": "string",
+        "enum": [
+          "CRITICAL",
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ],
+        "title": "TaskPriority"
+      },
+      "TaskStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "PLANNING",
+          "RUNNING",
+          "WAITING_APPROVAL",
+          "RETRYING",
+          "DEGRADED",
+          "COMPLETED",
+          "FAILED",
+          "CANCELLED"
+        ],
+        "title": "TaskStatus"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "经营总览",
+      "description": "经营指标、预警和审批概览。"
+    },
+    {
+      "name": "Agent 任务",
+      "description": "任务创建、状态、事件和取消。"
+    },
+    {
+      "name": "审批",
+      "description": "高风险写操作的人工审批。"
+    }
+  ]
+}
