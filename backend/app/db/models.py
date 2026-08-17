@@ -2,7 +2,18 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text, UniqueConstraint
+from decimal import Decimal
+from sqlalchemy import (
+    JSON,
+    Boolean, 
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -57,6 +68,84 @@ class ToolCallRecord(TenantAuditRecord):
     tool_name: Mapped[str] = mapped_column(String(96), index=True)
     status: Mapped[str] = mapped_column(String(32), index=True)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+class CollectionRunRecord(TenantAuditRecord):
+    __tablename__ = "collection_run"
+
+    task_id: Mapped[str] = mapped_column(String(64), index=True)
+    keyword: Mapped[str] = mapped_column(String(255), index=True)
+    requested_count: Mapped[int] = mapped_column(Integer)
+    actual_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    stop_reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    adapter_version: Mapped[str] = mapped_column(String(64))
+    parser_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class ProductSnapshotRecord(TenantAuditRecord):
+    __tablename__ = "product_snapshot"
+    __table_args__ = (
+        UniqueConstraint(
+            "collection_run_id",
+            "platform",
+            "product_id",
+            name="uq_product_snapshot_run_platform_product",
+        ),
+    )
+
+    collection_run_id: Mapped[str] = mapped_column(
+        ForeignKey("collection_run.id", ondelete="CASCADE"), index=True
+    )
+    platform: Mapped[str] = mapped_column(String(32), index=True)
+    market: Mapped[str] = mapped_column(String(32), index=True)
+    product_id: Mapped[str] = mapped_column(String(128), index=True)
+    title: Mapped[str] = mapped_column(Text)
+    brand: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    category: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, index=True
+    )
+    price: Mapped[Decimal] = mapped_column(Numeric(18, 4))
+    currency: Mapped[str] = mapped_column(String(3))
+    sales_display: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    sales_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sales_value_type: Mapped[str] = mapped_column(String(32))
+    shop_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    rating: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    review_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_ref: Mapped[str] = mapped_column(Text)
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_snapshot_ref: Mapped[str] = mapped_column(Text)
+    source_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ingest_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    source_type: Mapped[str] = mapped_column(String(32), index=True)
+    data_status: Mapped[str] = mapped_column(String(32), index=True)
+
+
+class EvidenceReferenceRecord(TenantAuditRecord):
+    __tablename__ = "evidence_reference"
+
+    collection_run_id: Mapped[str] = mapped_column(
+        ForeignKey("collection_run.id", ondelete="CASCADE"), index=True
+    )
+    evidence_type: Mapped[str] = mapped_column(String(32), index=True)
+    data_level: Mapped[str] = mapped_column(String(16))
+    data_source: Mapped[str] = mapped_column(Text)
+    platform: Mapped[str] = mapped_column(String(32), index=True)
+    product_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+    query_range: Mapped[dict] = mapped_column(JSON)
+    source_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ingest_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    tool_call_id: Mapped[str] = mapped_column(String(64), index=True)
+    snapshot_ref: Mapped[str] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    data_version: Mapped[str] = mapped_column(String(128))
+    sample_scope: Mapped[dict] = mapped_column(JSON)
 
 
 class ApprovalRecord(TenantAuditRecord):

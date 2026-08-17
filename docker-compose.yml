@@ -23,9 +23,11 @@ services:
     ports: ["9000:9000", "9001:9001"]
     volumes: [minio_data:/data]
   api:
-    build: ./backend
+    build:
+      context: ./backend
+      target: runtime
     environment:
-      APP_ENV: docker
+      APP_ENV: ${APP_ENV:-docker}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://ecommerce_agent:change-me-for-local-only@db:5432/ecommerce_agent}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
@@ -34,33 +36,75 @@ services:
       JWT_SECRET: ${JWT_SECRET:-local-development-session-secret-change-before-production}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-Admin@123456}
       TASK_EXECUTION_MODE: worker
+      MARKET_MAX_PRODUCT_LIMIT: ${MARKET_MAX_PRODUCT_LIMIT:-50}
+      TAOBAO_DEMO_COLLECTION_ENABLED: ${TAOBAO_DEMO_COLLECTION_ENABLED:-false}
+      TAOBAO_DEMO_ALLOWED_TENANTS: ${TAOBAO_DEMO_ALLOWED_TENANTS:-demo}
+      TAOBAO_ALLOWED_HOSTS: ${TAOBAO_ALLOWED_HOSTS:-s.taobao.com,login.taobao.com,item.taobao.com}
+      TAOBAO_PAGE_TIMEOUT_MS: ${TAOBAO_PAGE_TIMEOUT_MS:-20000}
+      TAOBAO_MIN_REQUEST_INTERVAL_MS: ${TAOBAO_MIN_REQUEST_INTERVAL_MS:-1000}
+      TAOBAO_RAW_SNAPSHOT_DIR: /app/data/raw/market-intelligence
+      TAOBAO_AUTH_STATE_ENABLED: ${TAOBAO_AUTH_STATE_ENABLED:-false}
+      TAOBAO_AUTH_STATE_PATH: ${TAOBAO_AUTH_STATE_PATH:-}
     ports: ["8000:8000"]
-    volumes: [./backend:/app]
+    volumes:
+      - ./backend:/app
+      - market_raw_data:/app/data/raw/market-intelligence
     depends_on: [db, redis]
   web:
     build: ./frontend
     ports: ["5173:5173"]
     depends_on: [api]
   agent-worker:
-    build: ./backend
+    build:
+      context: ./backend
+      target: runtime
     command: python -m app.worker
     environment:
-      APP_ENV: docker
+      APP_ENV: ${APP_ENV:-docker}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://ecommerce_agent:change-me-for-local-only@db:5432/ecommerce_agent}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       AUTH_MODE: ${AUTH_MODE:-password}
       JWT_SECRET: ${JWT_SECRET:-local-development-session-secret-change-before-production}
       TASK_EXECUTION_MODE: worker
+      MARKET_MAX_PRODUCT_LIMIT: ${MARKET_MAX_PRODUCT_LIMIT:-50}
+      TAOBAO_DEMO_COLLECTION_ENABLED: ${TAOBAO_DEMO_COLLECTION_ENABLED:-false}
+      TAOBAO_DEMO_ALLOWED_TENANTS: ${TAOBAO_DEMO_ALLOWED_TENANTS:-demo}
+      TAOBAO_ALLOWED_HOSTS: ${TAOBAO_ALLOWED_HOSTS:-s.taobao.com,login.taobao.com,item.taobao.com}
+      TAOBAO_PAGE_TIMEOUT_MS: ${TAOBAO_PAGE_TIMEOUT_MS:-20000}
+      TAOBAO_MIN_REQUEST_INTERVAL_MS: ${TAOBAO_MIN_REQUEST_INTERVAL_MS:-1000}
+      TAOBAO_RAW_SNAPSHOT_DIR: /app/data/raw/market-intelligence
+    volumes:
+      - market_raw_data:/app/data/raw/market-intelligence
     depends_on: [db, redis]
   scheduler:
-    build: ./backend
+    build:
+      context: ./backend
+      target: runtime
     command: python -m app.scheduler
     environment:
       APP_ENV: docker
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://ecommerce_agent:change-me-for-local-only@db:5432/ecommerce_agent}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     depends_on: [db, redis]
+  test:
+    profiles: [test]
+    build:
+      context: ./backend
+      target: test
+    environment:
+      APP_ENV: test
+      AUTH_MODE: password
+      JWT_SECRET: test-session-secret-with-at-least-32-characters
+      BOOTSTRAP_ADMIN_PASSWORD: TestAdmin@123456
+      DATABASE_URL: sqlite:////tmp/test-ecommerce-agent.db
+      TASK_EXECUTION_MODE: inline
+      TAOBAO_DEMO_COLLECTION_ENABLED: "true"
+      TAOBAO_DEMO_ALLOWED_TENANTS: tenant-001
+      TAOBAO_ALLOWED_HOSTS: s.taobao.com,login.taobao.com,item.taobao.com
+      TAOBAO_RAW_SNAPSHOT_DIR: /tmp/market-intelligence-raw
+    volumes: [./backend:/app]
 volumes:
   postgres_data:
   qdrant_data:
   minio_data:
+  market_raw_data:

@@ -1,0 +1,14 @@
+services:
+  api:
+    environment:
+      APP_ENV: demo
+      TAOBAO_DEMO_COLLECTION_ENABLED: "true"
+      TAOBAO_AUTH_STATE_ENABLED: "true"
+      TAOBAO_AUTH_STATE_PATH: /run/secrets/taobao-state.json
+    volumes:
+      - type: bind
+        source: ${TAOBAO_AUTH_STATE_HOST_PATH:?Set TAOBAO_AUTH_STATE_HOST_PATH to taobao-state.json}
+        target: /run/secrets/taobao-state.json
+        read_only: true
+        bind:
+          create_host_path: false

@@ -1,0 +1,26 @@
+[
+  {
+    "metric_code": "market_size",
+    "value": null,
+    "unit": "USD",
+    "status": "unavailable",
+    "methodology": "Amazon Reviews 2023 does not provide market-wide market size data.",
+    "source_timestamp": null
+  },
+  {
+    "metric_code": "gmv",
+    "value": null,
+    "unit": "USD",
+    "status": "unavailable",
+    "methodology": "Amazon Reviews 2023 does not provide market-wide GMV data.",
+    "source_timestamp": null
+  },
+  {
+    "metric_code": "growth",
+    "value": null,
+    "unit": "percent",
+    "status": "unavailable",
+    "methodology": "Amazon Reviews 2023 does not provide market growth data.",
+    "source_timestamp": null
+  }
+]
