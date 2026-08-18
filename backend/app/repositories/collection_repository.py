@@ -6,16 +6,18 @@ from app.db.models import (
     CollectionRunRecord,
     EvidenceReferenceRecord,
     ProductSnapshotRecord,
+    ReviewSnapshotRecord,
 )
 from app.modules.market_intelligence.schemas import (
     CollectionRun,
     EvidenceReference,
     NormalizedProduct,
+    NormalizedReview,
 )
 
 
 class CollectionRepository(Protocol):
-    """商品采集结果持久化接口。"""
+    """市场情报采集结果持久化接口。"""
 
     def save_product_collection(
         self,
@@ -27,9 +29,19 @@ class CollectionRepository(Protocol):
         """保存一次完整的商品采集结果。"""
         ...
 
+    def save_review_collection(
+        self,
+        *,
+        run: CollectionRun,
+        reviews: list[NormalizedReview],
+        evidence_refs: list[EvidenceReference],
+    ) -> None:
+        """保存一次完整的评论采集结果。"""
+        ...
+
 
 class SQLAlchemyCollectionRepository:
-    """基于 SQLAlchemy 的商品采集结果持久化实现。"""
+    """基于 SQLAlchemy 的市场情报采集结果持久化实现。"""
 
     def __init__(
         self,
@@ -44,17 +56,13 @@ class SQLAlchemyCollectionRepository:
         products: list[NormalizedProduct],
         evidence_refs: list[EvidenceReference],
     ) -> None:
-        """在同一事务中保存采集批次、商品快照和证据信息。"""
-
-        # 入库前检查数据是否属于同一个采集批次
-        self._validate_collection(
+        self._validate_product_collection(
             run=run,
             products=products,
             evidence_refs=evidence_refs,
         )
 
         with self.session_factory() as session:
-            # 三类数据作为一个整体提交，任一失败则全部回滚
             with session.begin():
                 session.add(
                     self._to_run_record(run)
@@ -80,8 +88,47 @@ class SQLAlchemyCollectionRepository:
                     ]
                 )
 
+    def save_review_collection(
+        self,
+        *,
+        run: CollectionRun,
+        reviews: list[NormalizedReview],
+        evidence_refs: list[EvidenceReference],
+    ) -> None:
+        self._validate_review_collection(
+            run=run,
+            reviews=reviews,
+            evidence_refs=evidence_refs,
+        )
+
+        with self.session_factory() as session:
+            with session.begin():
+                session.add(
+                    self._to_run_record(run)
+                )
+
+                session.add_all(
+                    [
+                        self._to_review_record(
+                            review=review,
+                            run=run,
+                        )
+                        for review in reviews
+                    ]
+                )
+
+                session.add_all(
+                    [
+                        self._to_evidence_record(
+                            evidence=evidence,
+                            run=run,
+                        )
+                        for evidence in evidence_refs
+                    ]
+                )
+
     @staticmethod
-    def _validate_collection(
+    def _validate_product_collection(
         *,
         run: CollectionRun,
         products: list[NormalizedProduct],
@@ -93,6 +140,27 @@ class SQLAlchemyCollectionRepository:
             if product.collection_run_id != run.id:
                 raise ValueError(
                     "product.collection_run_id must match run.id"
+                )
+
+        for evidence in evidence_refs:
+            if evidence.collection_run_id != run.id:
+                raise ValueError(
+                    "evidence.collection_run_id must match run.id"
+                )
+
+    @staticmethod
+    def _validate_review_collection(
+        *,
+        run: CollectionRun,
+        reviews: list[NormalizedReview],
+        evidence_refs: list[EvidenceReference],
+    ) -> None:
+        """校验评论和证据是否归属于当前采集批次。"""
+
+        for review in reviews:
+            if review.collection_run_id != run.id:
+                raise ValueError(
+                    "review.collection_run_id must match run.id"
                 )
 
         for evidence in evidence_refs:
@@ -161,6 +229,40 @@ class SQLAlchemyCollectionRepository:
         )
 
     @staticmethod
+    def _to_review_record(
+        *,
+        review: NormalizedReview,
+        run: CollectionRun,
+    ) -> ReviewSnapshotRecord:
+        """将标准评论模型转换为评论快照 ORM 模型。"""
+
+        return ReviewSnapshotRecord(
+            tenant_id=run.tenant_id,
+            trace_id=run.trace_id,
+            collection_run_id=review.collection_run_id,
+            platform=review.platform,
+            market=review.market,
+            review_id=review.review_id,
+            product_id=review.product_id,
+            content=review.content,
+            rating=review.rating,
+            review_time=review.review_time,
+            verified_purchase=review.verified_purchase,
+            helpful_count=review.helpful_count,
+            sentiment=(
+                review.sentiment.value
+                if review.sentiment is not None
+                else None
+            ),
+            themes=list(review.themes),
+            source_ref=review.source_ref,
+            source_snapshot_ref=review.source_snapshot_ref,
+            source_timestamp=review.source_timestamp,
+            ingest_timestamp=review.ingest_timestamp,
+            data_status=review.data_status.value,
+        )
+
+    @staticmethod
     def _to_evidence_record(
         *,
         evidence: EvidenceReference,
@@ -169,7 +271,6 @@ class SQLAlchemyCollectionRepository:
         """将证据引用模型转换为 ORM 模型。"""
 
         return EvidenceReferenceRecord(
-            # evidence_id 是证据链中的稳定标识
             id=evidence.evidence_id,
             tenant_id=run.tenant_id,
             trace_id=run.trace_id,
@@ -179,6 +280,7 @@ class SQLAlchemyCollectionRepository:
             data_source=evidence.data_source,
             platform=evidence.platform,
             product_id=evidence.product_id,
+            review_id=evidence.review_id,
             query_range=evidence.query_range,
             source_timestamp=evidence.source_timestamp,
             ingest_timestamp=evidence.ingest_timestamp,
@@ -186,8 +288,6 @@ class SQLAlchemyCollectionRepository:
             snapshot_ref=evidence.snapshot_ref,
             sha256=evidence.sha256,
             data_version=evidence.data_version,
-
-            # Pydantic 模型转换为可写入 JSON 字段的字典
             sample_scope=evidence.sample_scope.model_dump(
                 mode="json"
             ),

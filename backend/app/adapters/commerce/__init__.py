@@ -1,4 +1,4 @@
-from app.adapters.commerce.base import (
+from app.adapters.commerce.commerce_adapter_base import (
     AdapterContext,
     AdapterError,
     AdapterResult,
@@ -12,7 +12,7 @@ from app.adapters.commerce.dataset import (
     PlatformDatasetMapper,
     ProductMappingContext,
 )
-from app.adapters.commerce.registry import CommerceAdapterRegistry
+from app.adapters.commerce.adapter_registry import CommerceAdapterRegistry
 
 __all__ = [
     "AdapterContext",

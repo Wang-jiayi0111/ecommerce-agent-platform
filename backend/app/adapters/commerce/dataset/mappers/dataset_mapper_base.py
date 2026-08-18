@@ -10,6 +10,7 @@ from app.modules.market_intelligence.schemas import (
     DataStatus,
     DatasetManifest,
     NormalizedProduct,
+    NormalizedReview,
     ProductSort,
     SalesValueType,
 )
@@ -17,6 +18,15 @@ from app.modules.market_intelligence.schemas import (
 
 @dataclass(frozen=True)
 class ProductMappingContext:
+    collection_run_id: str
+    manifest: DatasetManifest
+    source_timestamp: datetime
+    data_status: DataStatus
+    source_snapshot_ref: str
+
+
+@dataclass(frozen=True)
+class ReviewMappingContext:
     collection_run_id: str
     manifest: DatasetManifest
     source_timestamp: datetime
@@ -36,17 +46,29 @@ class PlatformDatasetMapper(ABC):
     ) -> NormalizedProduct:
         """Convert one platform record to the public product schema."""
 
+    @abstractmethod
+    def map_review(
+        self,
+        raw: Mapping[str, Any],
+        context: ReviewMappingContext,
+    ) -> NormalizedReview:
+        """Convert one platform review record to the public review schema."""
+
     def supports_sort(self, sort_by: ProductSort) -> bool:
         return sort_by in self.supported_sorts
 
     def validate_record_scope(
         self,
         raw: Mapping[str, Any],
-        context: ProductMappingContext,
+        context: ProductMappingContext | ReviewMappingContext,
     ) -> None:
         raw_platform = self.optional_text(raw.get("_platform"))
-        if raw_platform is not None and raw_platform.casefold() != self.platform.casefold():
+        if (
+            raw_platform is not None
+            and raw_platform.casefold() != self.platform.casefold()
+        ):
             raise ValueError("record platform does not match mapper platform")
+
         raw_market = self.optional_text(raw.get("_market"))
         if (
             raw_market is not None
@@ -67,6 +89,25 @@ class PlatformDatasetMapper(ABC):
         revision = revision or context.manifest.dataset_version
         subset = subset or "products"
         return f"{dataset}@{revision}:{subset}:{self.platform}:{product_id}"
+
+    def review_source_ref(
+        self,
+        raw: Mapping[str, Any],
+        context: ReviewMappingContext,
+        review_id: str,
+    ) -> str:
+        dataset = self.optional_text(raw.get("_source_dataset"))
+        revision = self.optional_text(raw.get("_source_revision"))
+        subset = self.optional_text(raw.get("_source_subset"))
+
+        dataset = dataset or context.manifest.dataset_id
+        revision = revision or context.manifest.dataset_version
+        subset = subset or "reviews"
+
+        return (
+            f"{dataset}@{revision}:"
+            f"{subset}:{self.platform}:{review_id}"
+        )
 
     def build_product(
         self,
@@ -116,11 +157,49 @@ class PlatformDatasetMapper(ABC):
             data_status=context.data_status,
         )
 
+    def build_review(
+        self,
+        *,
+        context: ReviewMappingContext,
+        source_ref: str,
+        review_id: str,
+        product_id: str,
+        content: str,
+        rating: Decimal | None = None,
+        review_time: datetime | None = None,
+        verified_purchase: bool | None = None,
+        helpful_count: int | None = None,
+    ) -> NormalizedReview:
+        return NormalizedReview(
+            review_id=review_id,
+            collection_run_id=context.collection_run_id,
+            platform=self.platform,
+            market=context.manifest.market.upper(),
+            product_id=product_id,
+            content=content,
+            rating=rating,
+            review_time=review_time,
+            verified_purchase=verified_purchase,
+            helpful_count=helpful_count,
+
+            # 这里不做评论分析
+            sentiment=None,
+            themes=[],
+
+            source_ref=source_ref,
+            source_snapshot_ref=context.source_snapshot_ref,
+            source_timestamp=context.source_timestamp,
+            data_status=context.data_status,
+        )
+
     @classmethod
     def first_value(cls, raw: Mapping[str, Any], *field_names: str) -> Any:
         for field_name in field_names:
             value = raw.get(field_name)
-            if value is not None and cls.optional_text(value) is not None:
+            if (
+                value is not None
+                and cls.optional_text(value) is not None
+            ):
                 return value
         return None
 
@@ -135,6 +214,7 @@ class PlatformDatasetMapper(ABC):
     def optional_text(value: Any) -> str | None:
         if value is None:
             return None
+
         text = str(value).strip()
         return text or None
 
@@ -147,10 +227,15 @@ class PlatformDatasetMapper(ABC):
         required: bool = False,
     ) -> Decimal | None:
         text = cls.optional_text(value)
-        if text is None or text.casefold() in {"none", "null", "n/a"}:
+
+        if (
+            text is None
+            or text.casefold() in {"none", "null", "n/a"}
+        ):
             if required:
                 raise ValueError(f"{field_name} is required")
             return None
+
         try:
             return Decimal(text.replace(",", ""))
         except InvalidOperation as exc:

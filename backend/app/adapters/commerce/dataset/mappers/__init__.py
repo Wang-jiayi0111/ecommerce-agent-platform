@@ -1,4 +1,4 @@
-from app.adapters.commerce.dataset.mappers.amazon import AmazonDatasetMapper
+from app.adapters.commerce.dataset.mappers.amazon_dataset_mapper import AmazonDatasetMapper
 
 __all__ = [
     "AmazonDatasetMapper",

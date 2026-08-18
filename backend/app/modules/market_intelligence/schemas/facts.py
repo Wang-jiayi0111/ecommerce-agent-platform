@@ -66,6 +66,7 @@ class NormalizedReview(MarketIntelligenceModel):
     sentiment: Sentiment | None = None
     themes: list[NonEmptyStr] = Field(default_factory=list)
     source_ref: NonEmptyStr
+    source_snapshot_ref: NonEmptyStr
     source_timestamp: datetime
     ingest_timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     data_status: DataStatus

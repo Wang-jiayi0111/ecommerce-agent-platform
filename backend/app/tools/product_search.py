@@ -8,7 +8,8 @@ from app.adapters.commerce import (
     AdapterError,
     CommerceAdapterRegistry,
 )
-from app.adapters.commerce.base import AdapterResult
+from app.adapters.commerce.commerce_adapter_base import AdapterResult
+from app.repositories.collection_repository import CollectionRepository
 from app.modules.market_intelligence.schemas import (
     AdapterCapabilities,
     CollectionRun,
@@ -39,12 +40,14 @@ class ProductSearchTool:
     def __init__(
         self,
         adapter_registry: CommerceAdapterRegistry,
+        repository: CollectionRepository,
         *,
         max_product_limit: int = 50,
     ) -> None:
         if not 1 <= max_product_limit <= 50:
             raise ValueError("max_product_limit must be between 1 and 50")
         self.adapter_registry = adapter_registry
+        self.repository = repository
         self.max_product_limit = max_product_limit
 
     def execute(self, request: ToolRequest) -> ToolResponse:
@@ -202,6 +205,22 @@ class ProductSearchTool:
                 code="COLLECTION_INTERNAL_ERROR",
                 message="Product search failed because of an internal error.",
                 source=source,
+            )
+
+        # Adapter 返回的数据完成校验后，再统一持久化到数据库
+        try:
+            self.repository.save_product_collection(
+                run=run,
+                products=products,
+                evidence_refs=evidence_refs,
+            )
+        except Exception:
+            return self._error_response(
+                request=request,
+                code="COLLECTION_INTERNAL_ERROR",
+                message="Product search result persistence failed.",
+                source=source,
+                run=run,
             )
 
         return ToolResponse(

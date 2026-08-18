@@ -6,7 +6,9 @@ from app.modules.market_intelligence.schemas import (
     CollectionRun,
     EvidenceReference,
     NormalizedProduct,
+    NormalizedReview,
     ProductSearchRequest,
+    ReviewSearchRequest,
 )
 
 
@@ -59,6 +61,12 @@ class CommerceAdapter(Protocol):
         request: ProductSearchRequest,
         context: AdapterContext,
     ) -> AdapterResult[list[NormalizedProduct]]: ...
+
+    def search_reviews(
+        self,
+        request: ReviewSearchRequest,
+        context: AdapterContext,
+    ) -> AdapterResult[list[NormalizedReview]]: ...
 
 
 CollectionContext = AdapterContext

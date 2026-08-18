@@ -124,6 +124,52 @@ class ProductSnapshotRecord(TenantAuditRecord):
     source_type: Mapped[str] = mapped_column(String(32), index=True)
     data_status: Mapped[str] = mapped_column(String(32), index=True)
 
+class ReviewSnapshotRecord(TenantAuditRecord):
+    __tablename__ = "review_snapshot"
+    __table_args__ = (
+        UniqueConstraint(
+            "collection_run_id",
+            "platform",
+            "review_id",
+            name="uq_review_snapshot_run_platform_review",
+        ),
+    )
+
+    # 本条评论属于哪一次采集
+    collection_run_id: Mapped[str] = mapped_column(
+        ForeignKey("collection_run.id", ondelete="CASCADE"), index=True,
+    )
+
+    # 评论所属平台与市场
+    platform: Mapped[str] = mapped_column(String(32), index=True)
+    market: Mapped[str] = mapped_column(String(32), index=True)
+
+    # 评论自身及所属商品
+    review_id: Mapped[str] = mapped_column(String(128), index=True)
+    product_id: Mapped[str] = mapped_column(String(128), index=True)
+
+    # 评论正文
+    content: Mapped[str] = mapped_column(Text)
+
+    # 评论原始属性
+    rating: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    review_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    verified_purchase: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    helpful_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # 后续评论分析可能产生的字段
+    sentiment: Mapped[str | None] = mapped_column(String(32),nullable=True)
+    themes: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+    # 数据来源与时间信息
+    source_ref: Mapped[str] = mapped_column(Text)
+    source_snapshot_ref: Mapped[str] = mapped_column(Text)
+    source_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ingest_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    # 数据质量状态
+    data_status: Mapped[str] = mapped_column(String(32), index=True)
+
 
 class EvidenceReferenceRecord(TenantAuditRecord):
     __tablename__ = "evidence_reference"
@@ -135,9 +181,8 @@ class EvidenceReferenceRecord(TenantAuditRecord):
     data_level: Mapped[str] = mapped_column(String(16))
     data_source: Mapped[str] = mapped_column(Text)
     platform: Mapped[str] = mapped_column(String(32), index=True)
-    product_id: Mapped[str | None] = mapped_column(
-        String(128), nullable=True, index=True
-    )
+    product_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    review_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     query_range: Mapped[dict] = mapped_column(JSON)
     source_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     ingest_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))

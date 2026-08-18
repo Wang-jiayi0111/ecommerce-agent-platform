@@ -1,5 +1,5 @@
-from app.adapters.commerce.dataset.adapter import DatasetAdapter
-from app.adapters.commerce.dataset.base_mapper import (
+from app.adapters.commerce.dataset.dataset_adapter import DatasetAdapter
+from app.adapters.commerce.dataset.mappers.dataset_mapper_base import (
     PlatformDatasetMapper,
     ProductMappingContext,
 )

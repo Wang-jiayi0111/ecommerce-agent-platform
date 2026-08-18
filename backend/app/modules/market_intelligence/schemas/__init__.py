@@ -16,6 +16,7 @@ from app.modules.market_intelligence.schemas.adapter import (
     EvidenceReference,
     EvidenceType,
     ProductSearchRequest,
+    ReviewSearchRequest,
     ProductSort,
 )
 from app.modules.market_intelligence.schemas.common import (
@@ -57,6 +58,7 @@ __all__ = [
     "ProfitInput",
     "ProfitStatus",
     "ProductSearchRequest",
+    "ReviewSearchRequest",
     "ProductSort",
     "ReviewInsight",
     "ReviewTheme",

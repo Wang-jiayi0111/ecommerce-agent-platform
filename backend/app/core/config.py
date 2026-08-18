@@ -24,6 +24,11 @@ class Settings:
     bootstrap_admin_username: str = getenv("BOOTSTRAP_ADMIN_USERNAME", "admin")
     bootstrap_admin_password: str = getenv("BOOTSTRAP_ADMIN_PASSWORD", "Admin@123456")
 
+    market_max_product_limit: int = int(getenv("MARKET_MAX_PRODUCT_LIMIT", "50"))
+    market_max_reviews_per_product: int = int(
+        getenv("MARKET_MAX_REVIEWS_PER_PRODUCT", "50")
+    )
+
     def validate(self) -> None:
         if self.auth_mode not in {"password", "jwt"}:
             raise RuntimeError("AUTH_MODE must be 'password' or 'jwt'")

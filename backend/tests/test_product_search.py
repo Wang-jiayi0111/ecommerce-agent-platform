@@ -10,18 +10,18 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.adapters.commerce.base import AdapterResult
+from backend.app.adapters.commerce.commerce_adapter_base import AdapterResult
 from app.db.models import (
     Base,
     CollectionRunRecord,
     EvidenceReferenceRecord,
     ProductSnapshotRecord,
 )
-from app.modules.market_intelligence.collection_repository import (
+from backend.app.repositories.collection_repository import (
     SQLAlchemyCollectionRepository,
 )
 
-from app.adapters.commerce.dataset.adapter import DatasetAdapter
+from backend.app.adapters.commerce.dataset.dataset_adapter import DatasetAdapter
 from app.modules.market_intelligence.schemas import (
     AdapterCapabilities,
     AnalysisScope,
@@ -31,7 +31,7 @@ from app.modules.market_intelligence.schemas import (
     NormalizedProduct,
 )
 from app.tools.contracts import ToolRequest
-from app.tools.product_search_with_repository import ProductSearchTool
+from backend.app.tools.product_search import ProductSearchTool
 
 
 @pytest.fixture

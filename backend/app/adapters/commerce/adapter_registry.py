@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 
-from app.adapters.commerce.base import CommerceAdapter
+from app.adapters.commerce.commerce_adapter_base import CommerceAdapter
 
 
 AdapterKey = tuple[str, str]

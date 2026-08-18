@@ -96,6 +96,15 @@ class ProductSearchRequest(MarketIntelligenceModel):
     sort_by: ProductSort = ProductSort.DEFAULT
 
 
+class ReviewSearchRequest(MarketIntelligenceModel):
+    platform: NonEmptyStr
+    market: NonEmptyStr
+    category: NonEmptyStr
+    keyword: NonEmptyStr
+    product_ids: list[NonEmptyStr] = Field(min_length=1)
+    review_limit_per_product: int = Field(ge=1,)
+
+
 class AdapterCapabilities(MarketIntelligenceModel):
     platform: NonEmptyStr
     data_source_mode: DataSourceMode
