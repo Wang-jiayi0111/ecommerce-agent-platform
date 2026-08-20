@@ -1,502 +1,315 @@
 import json
+from dataclasses import replace
+from decimal import Decimal
+from os import getenv
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.adapters.commerce.adapter_registry import (
-    CommerceAdapterRegistry,
+from app.composition import (
+    build_commerce_adapter_registry,
+    build_product_search_tool,
+    build_repository,
+    build_review_insight_tool,
 )
-from app.adapters.commerce.dataset.dataset_adapter import (
-    DatasetAdapter,
-)
+from app.core.config import Settings
 from app.db.models import Base
-from app.repositories.collection_repository import (
-    SQLAlchemyCollectionRepository,
-)
-from app.tools.contracts import ToolRequest
-from app.tools.review_analyzer import (
-    PrecomputedReviewAnalyzer,
-)
-from app.tools.review_insight import (
-    ReviewInsightTool,
-)
+from app.db.session import build_engine
+from app.tools import ToolRequest
+from app.tools.support.llm_review_analyzer import LLMReviewAnalyzer
 
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.llm,
+    pytest.mark.skipif(
+        getenv("RUN_LLM_TESTS", "").strip() != "1",
+        reason="Set RUN_LLM_TESTS=1 to run the real LLM integration test.",
+    ),
+]
 
 DATASET_ID = "amazon_us_portable_coffee_v1"
-
-BACKEND_DIR = Path(__file__).resolve().parents[1]
-
-DATASET_ROOT = (
-    BACKEND_DIR
-    / "data"
-    / "market_intelligence"
-)
-
-DATASET_DIR = (
-    DATASET_ROOT
-    / DATASET_ID
-)
-
-OUTPUT_DIR = (
-    BACKEND_DIR
-    / "tests"
-    / "output"
-)
-
-TEST_DB_PATH = (
-    OUTPUT_DIR
-    / "review_insight_test.db"
-)
-
-# reviews.jsonl 中真实存在，并且有多条评论
-TEST_PRODUCT_ID = "B0BMV7X9YJ"
-
-REVIEW_LIMIT = 5
-
-
-def load_manifest() -> dict:
-    manifest_path = (
-        DATASET_DIR
-        / "manifest.json"
-    )
-
-    assert manifest_path.is_file(), (
-        f"Dataset manifest does not exist: "
-        f"{manifest_path}"
-    )
-
-    return json.loads(
-        manifest_path.read_text(
-            encoding="utf-8"
-        )
-    )
+PLATFORM = "amazon"
+DATA_SOURCE_MODE = "fixed_dataset"
+TENANT_ID = "review-insight-llm-test-tenant"
+USER_ID = "review-insight-llm-test-user"
+PRODUCT_SEARCH_LIMIT = 5
+REVIEW_LIMIT_PER_PRODUCT = 2
 
 
 @pytest.fixture
-def real_database():
-    """
-    每次测试前重新创建 SQLite 数据库。
+def test_settings() -> Settings:
+    settings = Settings()
 
-    测试结束后不删除，
-    方便手动使用 SQLite Viewer 检查。
-    """
-
-    OUTPUT_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
+    return replace(
+        settings,
+        environment="test",
     )
 
-    # 删除上一次测试数据库
-    if TEST_DB_PATH.exists():
-        TEST_DB_PATH.unlink()
-
-    engine = create_engine(
-        f"sqlite:///{TEST_DB_PATH.as_posix()}",
-    )
-
-    # 使用项目真实 ORM 创建所有表
+@pytest.fixture
+def session_factory(tmp_path: Path):
+    """Use an isolated SQLite database so the test does not touch dev data."""
+    database_path = tmp_path / "review-insight-llm.db"
+    engine = build_engine(f"sqlite:///{database_path.as_posix()}")
     Base.metadata.create_all(engine)
 
-    session_factory = sessionmaker(
+    factory = sessionmaker(
         bind=engine,
         class_=Session,
         expire_on_commit=False,
     )
 
-    yield engine, session_factory
+    try:
+        yield factory
+    finally:
+        engine.dispose()
 
-    engine.dispose()
+
+def _load_dataset_scope(registry) -> dict[str, str]:
+    """
+    Read the actual fixed-dataset manifest instead of hard-coding scope values.
+
+    DatasetAdapter selects datasets by exact platform/market/category/keyword
+    matching, so using the manifest keeps this test aligned with the fixture.
+    """
+    adapter = registry.get(PLATFORM, DATA_SOURCE_MODE)
+    dataset_dir = Path(adapter.dataset_root) / DATASET_ID
+    manifest_path = dataset_dir / "manifest.json"
+
+    assert manifest_path.is_file(), (
+        f"Fixed dataset manifest not found: {manifest_path}. "
+        "Ensure amazon_us_portable_coffee_v1 is present under the configured "
+        "market intelligence dataset root."
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    for field_name in ("market", "category", "keyword"):
+        assert manifest.get(field_name), (
+            f"manifest.json must contain non-empty {field_name!r}"
+        )
+
+    return {
+        "market": manifest["market"],
+        "category": manifest["category"],
+        "keyword": manifest["keyword"],
+    }
 
 
-def build_review_insight_tool(
+def _pick_product_id(products: list[dict]) -> str:
+    """Prefer a product whose metadata says it has reviews."""
+    assert products, "ProductSearchTool returned no products"
+
+    def review_count(product: dict) -> int:
+        value = product.get("review_count")
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    product = max(products, key=review_count)
+    product_id = product.get("product_id")
+    assert product_id, "Selected product does not contain product_id"
+    return str(product_id)
+
+
+def test_review_insight_tool_runs_complete_flow_with_real_llm(
+    test_settings,
     session_factory,
-) -> ReviewInsightTool:
+) -> None:
+    """
+    End-to-end integration test for ReviewInsightTool.
 
-    # 真实 Repository
-    repository = (
-        SQLAlchemyCollectionRepository(
-            session_factory
+    Covered path:
+      composition
+        -> DatasetAdapter
+        -> review persistence
+        -> LLMReviewAnalyzer
+        -> real configured StructuredLLMClient
+        -> ReviewInsight
+        -> ToolResponse
+
+    This test intentionally does not assert exact theme wording because real LLM
+    labels are non-deterministic. It asserts the stable public contract instead.
+    """
+    registry = build_commerce_adapter_registry(test_settings)
+    repository = build_repository(session_factory)
+
+    product_search_tool = build_product_search_tool(
+        registry,
+        repository,
+        test_settings,
+    )
+    review_insight_tool = build_review_insight_tool(
+        registry,
+        repository,
+        test_settings,
+    )
+
+    # Verify composition really wired the LLM analyzer rather than the
+    # precomputed fallback analyzer.
+    assert isinstance(review_insight_tool.analyzer, LLMReviewAnalyzer)
+    assert (
+        review_insight_tool.analyzer.client.provider.casefold()
+        == test_settings.llm_provider.casefold()
+    )
+
+    scope = _load_dataset_scope(registry)
+
+    product_search_limit = min(
+        PRODUCT_SEARCH_LIMIT,
+        int(test_settings.market_max_product_limit),
+    )
+    review_limit_per_product = min(
+        REVIEW_LIMIT_PER_PRODUCT,
+        int(test_settings.market_max_reviews_per_product),
+    )
+    assert product_search_limit >= 1
+    assert review_limit_per_product >= 1
+
+    # First discover a real product_id through the public ProductSearchTool.
+    product_response = product_search_tool.execute(
+        ToolRequest(
+            tenant_id=TENANT_ID,
+            user_id=USER_ID,
+            trace_id=f"product-trace-{uuid4()}",
+            parameters={
+                "schema_version": "1.0",
+                "task_id": str(uuid4()),
+                "tool_call_id": str(uuid4()),
+                "platform": PLATFORM,
+                "data_source_mode": DATA_SOURCE_MODE,
+                **scope,
+                "product_limit": product_search_limit,
+                "sort_by": "default",
+            },
         )
     )
 
-    # 真实 DatasetAdapter
-    adapter = DatasetAdapter(
-        platform="amazon",
-        dataset_root=DATASET_ROOT,
-        public_dataset_ids={
-            DATASET_ID,
-        },
+    assert product_response.success is True, product_response.model_dump_json(indent=2)
+    assert product_response.error is None
+    assert product_response.source == f"{PLATFORM}:{DATA_SOURCE_MODE}"
+
+    products = product_response.data["products"]
+    product_id = _pick_product_id(products)
+
+    # Now execute ReviewInsightTool. This path performs the real LLM request.
+    review_trace_id = f"review-trace-{uuid4()}"
+    review_tool_call_id = str(uuid4())
+
+    response = review_insight_tool.execute(
+        ToolRequest(
+            tenant_id=TENANT_ID,
+            user_id=USER_ID,
+            trace_id=review_trace_id,
+            parameters={
+                "schema_version": "1.0",
+                "task_id": str(uuid4()),
+                "tool_call_id": review_tool_call_id,
+                "platform": PLATFORM,
+                "data_source_mode": DATA_SOURCE_MODE,
+                **scope,
+                "product_ids": [product_id],
+                "review_limit_per_product": review_limit_per_product,
+            },
+        )
     )
 
-    registry = CommerceAdapterRegistry()
+    # Print the full response when running pytest with -s. This is useful while
+    # validating a real provider integration.
+    print(response.model_dump_json(indent=2))
 
-    registry.register(adapter)
-
-    return ReviewInsightTool(
-        adapter_registry=registry,
-        repository=repository,
-        analyzer=PrecomputedReviewAnalyzer(),
-        max_reviews_per_product=50,
-    )
-
-
-def build_request() -> ToolRequest:
-    manifest = load_manifest()
-
-    return ToolRequest(
-        tenant_id="test-tenant",
-        user_id="test-user",
-        trace_id="trace-review-persistence-001",
-        parameters={
-            "schema_version": "1.0",
-            "task_id": "task-review-persistence-001",
-            "tool_call_id": (
-                "tool-call-review-persistence-001"
-            ),
-            "platform": manifest["platform"],
-            "data_source_mode": "fixed_dataset",
-            "market": manifest["market"],
-            "category": manifest["category"],
-            "keyword": manifest["keyword"],
-            "product_ids": [
-                TEST_PRODUCT_ID,
-            ],
-            "review_limit_per_product": (
-                REVIEW_LIMIT
-            ),
-        },
-    )
-
-
-def test_review_insight_real_persistence(
-    real_database,
-):
-    engine, session_factory = real_database
-
-    tool = build_review_insight_tool(
-        session_factory
-    )
-
-    request = build_request()
-
-    # 真正执行 ReviewInsightTool
-    response = tool.execute(request)
-
-    # -----------------------------
-    # 1. 验证 Tool 执行成功
-    # -----------------------------
-
-    assert response.success is True, (
-        response.error.model_dump()
-        if response.error
-        else response.model_dump()
-    )
-
+    assert response.success is True, response.model_dump_json(indent=2)
     assert response.error is None
+    assert response.source == f"{PLATFORM}:{DATA_SOURCE_MODE}"
+    assert response.trace_id == review_trace_id
 
-    assert (
-        response.source
-        == "amazon:fixed_dataset"
+    data = response.data
+    assert data["schema_version"] == "1.0"
+    assert data["collection_run_id"]
+    assert data["status"] in {"COMPLETED", "PARTIAL", "completed", "partial"}
+
+    reviews = data["reviews"]
+    evidence_refs = data["evidence_refs"]
+    insight = data["review_insight"]
+
+    assert 1 <= len(reviews) <= review_limit_per_product
+    assert len(evidence_refs) == len(reviews)
+
+    # Every returned review must be evidence-backed.
+    review_ids = {review["review_id"] for review in reviews}
+    evidence_review_ids = {
+        evidence["review_id"]
+        for evidence in evidence_refs
+    }
+    assert review_ids == evidence_review_ids
+
+    for evidence in evidence_refs:
+        assert evidence["collection_run_id"] == data["collection_run_id"]
+        assert evidence["tool_call_id"] == review_tool_call_id
+        assert evidence["product_id"] == product_id
+
+    # LLMReviewAnalyzer should analyze every collected review.
+    sentiment = insight["sentiment_distribution"]
+    assert sentiment["total_count"] == len(reviews)
+    assert sentiment["analyzed_count"] == len(reviews)
+    assert Decimal(str(sentiment["coverage_ratio"])) == Decimal("1")
+
+    sentiment_count = sum(
+        int(sentiment[f"{name}_count"])
+        for name in ("positive", "neutral", "negative")
     )
+    assert sentiment_count == len(reviews)
 
-    assert (
-        response.data["status"]
-        == "COMPLETED"
-    )
+    # Do not assert exact labels from a real LLM. Assert their stable shape.
+    assert isinstance(insight["themes"], list)
+    assert isinstance(insight["pain_points"], list)
+    assert isinstance(insight["unmet_needs"], list)
 
-    reviews = response.data["reviews"]
-
-    assert len(reviews) == REVIEW_LIMIT
-
-    assert all(
-        review["product_id"]
-        == TEST_PRODUCT_ID
-        for review in reviews
-    )
-
-    # -----------------------------
-    # 2. 验证数据库文件真的存在
-    # -----------------------------
-
-    assert TEST_DB_PATH.exists()
-
-    assert TEST_DB_PATH.stat().st_size > 0
-
-    # -----------------------------
-    # 3. 验证真实数据库表存在
-    # -----------------------------
-
-    inspector = inspect(engine)
-
-    table_names = set(
-        inspector.get_table_names()
-    )
-
-    assert "collection_run" in table_names
-    assert "review_snapshot" in table_names
-    assert "evidence_reference" in table_names
-
-    # -----------------------------
-    # 4. 验证 collection_run 落库
-    # -----------------------------
-
-    with engine.connect() as connection:
-        run_count = connection.scalar(
-            text(
-                """
-                SELECT COUNT(*)
-                FROM collection_run
-                """
-            )
-        )
-
-        assert run_count == 1
-
-        run_row = connection.execute(
-            text(
-                """
-                SELECT
-                    id,
-                    task_id,
-                    trace_id,
-                    tenant_id,
-                    keyword,
-                    requested_count,
-                    actual_count,
-                    status
-                FROM collection_run
-                LIMIT 1
-                """
-            )
-        ).mappings().one()
-
-        assert (
-            run_row["task_id"]
-            == "task-review-persistence-001"
-        )
-
-        assert (
-            run_row["trace_id"]
-            == "trace-review-persistence-001"
-        )
-
-        assert (
-            run_row["tenant_id"]
-            == "test-tenant"
-        )
-
-        assert (
-            run_row["requested_count"]
-            == REVIEW_LIMIT
-        )
-
-        assert (
-            run_row["actual_count"]
-            == REVIEW_LIMIT
-        )
-
-        assert (
-            run_row["status"]
-            == "COMPLETED"
-        )
-
-    # -----------------------------
-    # 5. 验证 review_snapshot 落库
-    # -----------------------------
-
-    with engine.connect() as connection:
-        review_count = connection.scalar(
-            text(
-                """
-                SELECT COUNT(*)
-                FROM review_snapshot
-                """
-            )
-        )
-
-        assert review_count == REVIEW_LIMIT
-
-        saved_reviews = connection.execute(
-            text(
-                """
-                SELECT
-                    collection_run_id,
-                    platform,
-                    market,
-                    product_id,
-                    review_id,
-                    content,
-                    rating,
-                    source_ref,
-                    source_snapshot_ref
-                FROM review_snapshot
-                ORDER BY review_id
-                """
-            )
-        ).mappings().all()
-
-        assert len(saved_reviews) == REVIEW_LIMIT
-
-        assert all(
-            row["platform"] == "amazon"
-            for row in saved_reviews
-        )
-
-        assert all(
-            row["market"] == "US"
-            for row in saved_reviews
-        )
-
-        assert all(
-            row["product_id"]
-            == TEST_PRODUCT_ID
-            for row in saved_reviews
-        )
-
-        assert all(
-            row["content"]
-            for row in saved_reviews
-        )
-
-        assert all(
-            row["source_ref"]
-            for row in saved_reviews
-        )
-
-        assert all(
-            row["source_snapshot_ref"]
-            for row in saved_reviews
-        )
-
-    # -----------------------------
-    # 6. 验证 Evidence 落库
-    # -----------------------------
-
-    with engine.connect() as connection:
-        evidence_count = connection.scalar(
-            text(
-                """
-                SELECT COUNT(*)
-                FROM evidence_reference
-                WHERE evidence_type = 'review'
-                """
-            )
-        )
-
-        assert evidence_count == REVIEW_LIMIT
-
-        evidence_rows = connection.execute(
-            text(
-                """
-                SELECT
-                    collection_run_id,
-                    evidence_type,
-                    platform,
-                    product_id,
-                    review_id,
-                    tool_call_id,
-                    snapshot_ref,
-                    sha256
-                FROM evidence_reference
-                WHERE evidence_type = 'review'
-                ORDER BY review_id
-                """
-            )
-        ).mappings().all()
-
-        assert len(evidence_rows) == REVIEW_LIMIT
-
-        assert all(
-            row["platform"] == "amazon"
-            for row in evidence_rows
-        )
-
-        assert all(
-            row["product_id"]
-            == TEST_PRODUCT_ID
-            for row in evidence_rows
-        )
-
-        assert all(
-            row["tool_call_id"]
-            == "tool-call-review-persistence-001"
-            for row in evidence_rows
-        )
-
-        assert all(
-            row["snapshot_ref"]
-            for row in evidence_rows
-        )
-
-        assert all(
-            row["sha256"]
-            for row in evidence_rows
-        )
-
-    # -----------------------------
-    # 7. 验证 Review ↔ Evidence
-    # -----------------------------
-
-    review_by_id = {
-        row["review_id"]: row
-        for row in saved_reviews
+    assert str(insight["status"]).casefold() in {
+        "available",
+        "stale",
     }
 
-    evidence_by_review_id = {
-        row["review_id"]: row
-        for row in evidence_rows
+    assert insight["representative_review_ids"]
+    assert set(insight["representative_review_ids"]).issubset(review_ids)
+    assert len(insight["representative_review_ids"]) <= 5
+
+    evidence_ids = {
+        evidence["evidence_id"]
+        for evidence in evidence_refs
     }
+    assert set(insight["evidence_ids"]) == evidence_ids
+    assert len(insight["evidence_ids"]) == len(evidence_ids)
 
-    assert (
-        set(review_by_id)
-        == set(evidence_by_review_id)
+    sample_scope = insight["sample_scope"]
+    assert sample_scope["actual_review_count"] == len(reviews)
+    assert sample_scope["actual_product_count"] == 1
+    assert sample_scope["platforms"] == [PLATFORM]
+
+    semantic_group_count = sum(
+        len(insight[group_name])
+        for group_name in ("themes", "pain_points", "unmet_needs")
     )
+    assert semantic_group_count >= 1
 
-    for review_id, review in (
-        review_by_id.items()
-    ):
-        evidence = (
-            evidence_by_review_id[
-                review_id
-            ]
-        )
+    # Any semantic group produced by the LLM must remain traceable to reviews
+    # and evidence returned by this Tool call.
+    for group_name in ("themes", "pain_points", "unmet_needs"):
+        for item in insight[group_name]:
+            assert item["theme"].strip()
+            assert 1 <= item["mention_count"] <= len(reviews)
+            mention_ratio = Decimal(str(item["mention_ratio"]))
+            assert Decimal("0") < mention_ratio <= Decimal("1")
+            assert mention_ratio == (
+                Decimal(item["mention_count"])
+                / Decimal(len(reviews))
+            )
+            assert set(item["representative_review_ids"]).issubset(review_ids)
+            assert 1 <= len(item["representative_review_ids"]) <= 3
+            assert set(item["evidence_ids"]).issubset(evidence_ids)
 
-        assert (
-            evidence["collection_run_id"]
-            == review["collection_run_id"]
-        )
-
-        assert (
-            evidence["product_id"]
-            == review["product_id"]
-        )
-
-        assert (
-            evidence["snapshot_ref"]
-            == review["source_snapshot_ref"]
-        )
-
-    # -----------------------------
-    # 8. 验证 ReviewInsight
-    # -----------------------------
-
-    insight = response.data[
-        "review_insight"
-    ]
-
-    # 当前还没有真正的评论文本分析器
-    assert insight["status"] == "partial"
-
-    assert insight["themes"] == []
-    assert insight["pain_points"] == []
-    assert insight["unmet_needs"] == []
-
-    assert response.degraded is True
-
-    print()
-    print(
-        "Test database created at:"
-    )
-    print(TEST_DB_PATH)
+    if str(insight["status"]).casefold() == "stale":
+        assert response.degraded is True

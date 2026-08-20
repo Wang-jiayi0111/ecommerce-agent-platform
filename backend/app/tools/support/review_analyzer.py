@@ -57,26 +57,13 @@ class PrecomputedReviewAnalyzer:
             if evidence.review_id is not None
         }
 
-        sentiment_distribution = (
-            self._sentiment_distribution(reviews)
-        )
-
+        sentiment_distribution = self._sentiment_distribution(reviews)
         themes = self._build_themes(
             reviews=reviews,
             evidence_by_review=evidence_by_review,
         )
-
-        representative_review_ids = (
-            self._representative_review_ids(
-                reviews
-            )
-        )
-
-        evidence_ids = [
-            evidence.evidence_id
-            for evidence in evidence_refs
-        ]
-
+        representative_review_ids = self._representative_review_ids(reviews)
+        evidence_ids = [evidence.evidence_id for evidence in evidence_refs]
         status = self._status(reviews)
 
         return ReviewInsight(
@@ -98,8 +85,7 @@ class PrecomputedReviewAnalyzer:
     ) -> dict[str, Decimal | int]:
         counts = Counter(
             review.sentiment.value
-            for review in reviews
-            if review.sentiment is not None
+            for review in reviews if review.sentiment is not None
         )
 
         analyzed_count = sum(counts.values())
@@ -112,29 +98,17 @@ class PrecomputedReviewAnalyzer:
         if analyzed_count == 0:
             result["coverage_ratio"] = Decimal("0")
         else:
-            result["coverage_ratio"] = (
-                Decimal(analyzed_count)
-                / Decimal(len(reviews))
-            )
+            result["coverage_ratio"] = Decimal(analyzed_count) / Decimal(len(reviews))
 
         for sentiment in Sentiment:
             count = counts[sentiment.value]
-
-            result[
-                f"{sentiment.value}_count"
-            ] = count
-
+            result[f"{sentiment.value}_count"] = count
             if analyzed_count == 0:
                 ratio = Decimal("0")
             else:
-                ratio = (
-                    Decimal(count)
-                    / Decimal(analyzed_count)
-                )
+                ratio = Decimal(count) / Decimal(analyzed_count)
 
-            result[
-                f"{sentiment.value}_ratio"
-            ] = ratio
+            result[f"{sentiment.value}_ratio"] = ratio
 
         return result
 
@@ -144,10 +118,7 @@ class PrecomputedReviewAnalyzer:
         reviews: list[NormalizedReview],
         evidence_by_review: dict[str, str],
     ) -> list[ReviewTheme]:
-        theme_reviews: dict[
-            str,
-            list[NormalizedReview],
-        ] = defaultdict(list)
+        theme_reviews: dict[str,list[NormalizedReview],] = defaultdict(list)
 
         for review in reviews:
             # 同一条评论中的重复主题只计算一次
@@ -207,21 +178,13 @@ class PrecomputedReviewAnalyzer:
 
         return result
 
-    def _representative_review_ids(
-        self,
-        reviews: list[NormalizedReview],
-    ) -> list[str]:
+    def _representative_review_ids(self,reviews: list[NormalizedReview]) -> list[str]:
         return [
-            review.review_id
-            for review in self._sorted_reviews(
-                reviews
-            )[:5]
+            review.review_id for review in self._sorted_reviews(reviews)[:5]
         ]
 
     @staticmethod
-    def _sorted_reviews(
-        reviews: list[NormalizedReview],
-    ) -> list[NormalizedReview]:
+    def _sorted_reviews(reviews: list[NormalizedReview]) -> list[NormalizedReview]:
         return sorted(
             reviews,
             key=lambda review: (
@@ -231,13 +194,8 @@ class PrecomputedReviewAnalyzer:
         )
 
     @staticmethod
-    def _status(
-        reviews: list[NormalizedReview],
-    ) -> MetricStatus:
-        if any(
-            review.data_status is DataStatus.STALE
-            for review in reviews
-        ):
+    def _status(reviews: list[NormalizedReview]) -> MetricStatus:
+        if any(review.data_status is DataStatus.STALE for review in reviews):
             return MetricStatus.STALE
 
         # 第一版尚未实现完整的文本分析能力

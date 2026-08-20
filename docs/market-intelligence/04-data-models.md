@@ -97,6 +97,7 @@ MarketMetric表示一项市场指标，对应FR-020。
 | value | number、object、array或null | 指标值 |
 | unit | string或null | CNY、USD、percent、count、ratio等 |
 | status | enum | available、unavailable、partial、stale、conflict |
+| reason_code | string或null | unavailable、partial、stale或conflict的稳定原因码 |
 | scope | AnalysisScope | 统计范围 |
 | methodology | string | 数据来源和统计口径 |
 | evidence_ids | string array | 支撑指标的证据 |
@@ -133,23 +134,19 @@ CompetitorItem表示竞品矩阵中的一行，对应FR-021。
 
 ## 7. ProfitInput
 
-ProfitInput是ProfitCalculatorTool的输入，对应FR-023。第一版所有金额使用同一种货币。
+ProfitInput是`app/tools/support/contracts.py`定义并由`app.tools`公开导出的基础利润输入契约，对应FR-023。
 
 | 字段 | 类型 | 规则 |
 | --- | --- | --- |
-| selling_price | decimal | 大于0 |
-| product_cost | decimal | 大于等于0 |
-| platform_fee | decimal | 平台佣金或费用金额 |
-| logistics_cost | decimal | 物流成本 |
-| advertising_cost | decimal | 广告分摊成本 |
-| other_cost | decimal | 其他成本，默认0 |
-| currency | string | 与所有金额一致 |
-| minimum_margin | decimal | 目标毛利率，0到1 |
-| evidence_ids | string array | 售价和成本依据 |
-| fulfillment_cost | decimal | 仓储、履约等费用，默认0 |
-| tariff_cost | decimal | 关税及进口相关成本，默认0 |
+| price | float | 大于0 |
+| product_cost | float | 大于等于0 |
+| platform_fee | float | 平台佣金或费用金额，大于等于0 |
+| logistics_cost | float | 物流成本，大于等于0 |
+| advertising_cost | float | 广告分摊成本，大于等于0 |
 
 如果只有平台佣金比例，需要先按确定性公式转换为platform_fee，并保留原比例、计算过程和证据。LLM不能生成缺失成本。
+
+ProfitCalculatorParameters继承ProfitInput，并补充currency和minimum_margin。输出中的selling_price由price映射。Graph负责检查参数完整性，只在完整时调用ProfitCalculatorTool。
 
 ## 8. ProfitAnalysis
 
@@ -175,16 +172,13 @@ ProfitAnalysis由ProfitCalculatorTool确定性计算。
         product_cost
         + platform_fee
         + logistics_cost
-        + fulfillment_cost
-        + tariff_cost
         + advertising_cost
-        + other_cost
 
-    profit = selling_price - total_cost
-    margin = profit / selling_price
+    profit = price - total_cost
+    margin = profit / price
     meets_minimum_margin = margin >= minimum_margin
 
-缺少完整ProfitInput时返回status=unavailable。
+缺少完整ProfitCalculatorParameters时，Graph不调用ProfitCalculatorTool，直接生成status=unavailable的ProfitAnalysis。
 
 ## 9. ReviewInsight
 
@@ -237,7 +231,7 @@ Tool名称以需求规格书第7.1节为准：
 | ProductSearchTool | platform、market、category、keyword、filter、product_limit、sort_by | NormalizedProduct array |
 | MarketDataTool | category、market、date_range、商品样本 | MarketMetric array |
 | ReviewInsightTool | product_ids、filter、review_limit_per_product | NormalizedReview array和ReviewInsight |
-| ProfitCalculatorTool | ProfitInput | ProfitAnalysis |
+| ProfitCalculatorTool | ProfitCalculatorParameters，继承ProfitInput | ProfitAnalysis |
 
 评论读取、标签处理和聚合可以拆成内部组件，对Graph公开的名称保持ReviewInsightTool。
 

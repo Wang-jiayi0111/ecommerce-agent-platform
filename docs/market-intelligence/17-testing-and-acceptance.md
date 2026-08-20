@@ -31,14 +31,14 @@ OfficialApiAdapter 合同测试，后期接入时执行：
 - ProductSearchTool：Adapter选择、商品Schema、证据和部分结果。
 - MarketDataTool：完整指标、样本指标、unavailable和统计口径。
 - ReviewInsightTool：主题、情感、引用、脱敏和空评论。
-- ProfitCalculatorTool：Decimal公式、舍入、最低毛利和非法输入。
+- ProfitCalculatorTool：ProfitInput公式、margin舍入、最低毛利和非法输入。
 
 ## 4. Graph 测试
 
 - 正常全链路。
 - 无评论降级。
 - 无市场聚合指标降级。
-- 无成本降级。
+- 无成本时不调用ProfitCalculatorTool并生成unavailable结果。
 - 商品数据全空失败。
 - 节点临时错误重试。
 - 不可重试错误立即停止。

@@ -7,8 +7,10 @@ from app.modules.market_intelligence.schemas import (
     EvidenceReference,
     NormalizedProduct,
     NormalizedReview,
+    MarketMetric,
     ProductSearchRequest,
     ReviewSearchRequest,
+    MarketDataRequest, 
 )
 
 
@@ -67,6 +69,13 @@ class CommerceAdapter(Protocol):
         request: ReviewSearchRequest,
         context: AdapterContext,
     ) -> AdapterResult[list[NormalizedReview]]: ...
+
+
+    def get_market_metrics(
+        self,
+        request: MarketDataRequest,
+        context: AdapterContext,
+    ) -> AdapterResult[list[MarketMetric]]: ...
 
 
 CollectionContext = AdapterContext

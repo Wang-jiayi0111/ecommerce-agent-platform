@@ -53,4 +53,4 @@
 
 ## 5. 当前代码状态
 
-仓库中已有的淘宝页面采集代码不再属于目标方案，后续代码实施时移除或停止注册。当前需要实现 DatasetAdapter、四个 Tool 的统一契约、MarketIntelligenceService、MarketIntelligenceGraph、任务分派和市场机会独立页面。官方 API Adapter 留到取得平台授权后开发。
+当前需要实现 DatasetAdapter、四个 Tool 的统一契约、MarketIntelligenceService、MarketIntelligenceGraph、任务分派和市场机会独立页面。官方 API Adapter 留到取得平台授权后开发。

@@ -1,5 +1,21 @@
+import json
 from dataclasses import dataclass
 from os import getenv
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
+
+
+def _optional_float(name: str) -> float | None:
+    value = getenv(name)
+    return float(value) if value is not None else None
+
+
+def _optional_int(name: str) -> int | None:
+    value = getenv(name)
+    return int(value) if value is not None else None
 
 
 @dataclass(frozen=True)
@@ -29,6 +45,27 @@ class Settings:
         getenv("MARKET_MAX_REVIEWS_PER_PRODUCT", "50")
     )
 
+    llm_provider: str | None = getenv("LLM_PROVIDER")
+    llm_api_key: str | None = getenv("LLM_API_KEY") or getenv("DASHSCOPE_API_KEY")
+    llm_base_url: str | None = getenv("LLM_BASE_URL")
+    llm_model: str | None = getenv("LLM_MODEL")
+    llm_temperature: float | None = _optional_float("LLM_TEMPERATURE")
+    llm_top_p: float | None = _optional_float("LLM_TOP_P")
+    llm_max_tokens: int | None = _optional_int("LLM_MAX_TOKENS")
+    llm_timeout_seconds: float = float(getenv("LLM_TIMEOUT_SECONDS", "60"))
+    llm_max_retries: int = int(getenv("LLM_MAX_RETRIES", "2"))
+    llm_structured_output_mode: str = getenv(
+        "LLM_STRUCTURED_OUTPUT_MODE", "json_object"
+    )
+    llm_extra_body_json: str = getenv("LLM_EXTRA_BODY_JSON", "{}")
+    review_llm_batch_size: int = int(getenv("REVIEW_LLM_BATCH_SIZE", "20"))
+    review_llm_max_content_chars: int = int(
+        getenv("REVIEW_LLM_MAX_CONTENT_CHARS", "8000")
+    )
+    review_llm_output_language: str = getenv(
+        "REVIEW_LLM_OUTPUT_LANGUAGE", "zh-CN"
+    )
+
     def validate(self) -> None:
         if self.auth_mode not in {"password", "jwt"}:
             raise RuntimeError("AUTH_MODE must be 'password' or 'jwt'")
@@ -49,6 +86,57 @@ class Settings:
             raise RuntimeError("TASK_EXECUTION_MODE must be 'inline' or 'worker'")
         if self.environment.lower() in {"production", "prod"} and self.auto_create_schema:
             raise RuntimeError("AUTO_CREATE_SCHEMA=true is forbidden in production; run Alembic")
+
+        required_llm_settings = {
+            "LLM_PROVIDER": self.llm_provider,
+            "LLM_API_KEY": self.llm_api_key,
+            "LLM_BASE_URL": self.llm_base_url,
+            "LLM_MODEL": self.llm_model,
+        }
+        missing_llm_settings = [
+            name
+            for name, value in required_llm_settings.items()
+            if value is None or not value.strip()
+        ]
+        if missing_llm_settings:
+            raise RuntimeError(
+                "Missing required LLM settings: "
+                + ", ".join(missing_llm_settings)
+            )
+
+        if (
+            self.llm_temperature is not None
+            and not 0 <= self.llm_temperature <= 2
+        ):
+            raise RuntimeError("LLM_TEMPERATURE must be between 0 and 2")
+        if (
+            self.llm_top_p is not None
+            and not 0 < self.llm_top_p <= 1
+        ):
+            raise RuntimeError("LLM_TOP_P must be greater than 0 and at most 1")
+        if self.llm_max_tokens is not None and self.llm_max_tokens < 1:
+            raise RuntimeError("LLM_MAX_TOKENS must be positive")
+        if self.llm_timeout_seconds <= 0:
+            raise RuntimeError("LLM_TIMEOUT_SECONDS must be positive")
+        if self.llm_max_retries < 0:
+            raise RuntimeError("LLM_MAX_RETRIES must not be negative")
+        if self.llm_structured_output_mode not in {"json_object", "prompt_only"}:
+            raise RuntimeError(
+                "LLM_STRUCTURED_OUTPUT_MODE must be json_object or prompt_only"
+            )
+        if self.review_llm_batch_size < 1:
+            raise RuntimeError("REVIEW_LLM_BATCH_SIZE must be positive")
+        if self.review_llm_max_content_chars < 1:
+            raise RuntimeError("REVIEW_LLM_MAX_CONTENT_CHARS must be positive")
+        if not self.review_llm_output_language.strip():
+            raise RuntimeError("REVIEW_LLM_OUTPUT_LANGUAGE is required")
+
+        try:
+            llm_extra_body = json.loads(self.llm_extra_body_json)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("LLM_EXTRA_BODY_JSON must be valid JSON") from exc
+        if not isinstance(llm_extra_body, dict):
+            raise RuntimeError("LLM_EXTRA_BODY_JSON must contain a JSON object")
 
 
 settings = Settings()

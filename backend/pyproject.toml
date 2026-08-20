@@ -13,6 +13,7 @@ dependencies = [
   "sqlalchemy>=2.0",
   "psycopg[binary]>=3.2",
   "langgraph>=0.2",
+  "openai>=1.52",
   "PyJWT[crypto]>=2.10",
   "pwdlib[argon2]>=0.2",
   "alembic>=1.14",
@@ -34,6 +35,10 @@ include = ["app*"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+  "integration: tests that cross persistence or adapter boundaries",
+  "llm: tests that call a configured external LLM provider",
+]
 
 [tool.ruff]
 line-length = 100

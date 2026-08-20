@@ -83,7 +83,7 @@ Service 不接收 Vue 页面对象、HTTP Request、根 Graph 或其他 Agent �
 
 ### calculate_profit
 
-有完整 ProfitInput 时调用 Calculator。成本缺失时生成 unavailable 结果，主流程继续。
+按`app.tools`公开导出的ProfitInput字段检查成本，并校验currency和minimum_margin。参数完整时调用ProfitCalculatorTool；成本缺失时不调用Tool，生成unavailable结果，主流程继续。
 
 ### synthesize_report
 

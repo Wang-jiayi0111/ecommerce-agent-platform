@@ -10,18 +10,18 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from backend.app.adapters.commerce.commerce_adapter_base import AdapterResult
+from app.adapters.commerce.commerce_adapter_base import AdapterResult
 from app.db.models import (
     Base,
     CollectionRunRecord,
     EvidenceReferenceRecord,
     ProductSnapshotRecord,
 )
-from backend.app.repositories.collection_repository import (
+from app.repositories.collection_repository import (
     SQLAlchemyCollectionRepository,
 )
 
-from backend.app.adapters.commerce.dataset.dataset_adapter import DatasetAdapter
+from app.adapters.commerce.dataset.dataset_adapter import DatasetAdapter
 from app.modules.market_intelligence.schemas import (
     AdapterCapabilities,
     AnalysisScope,
@@ -30,8 +30,8 @@ from app.modules.market_intelligence.schemas import (
     EvidenceReference,
     NormalizedProduct,
 )
-from app.tools.contracts import ToolRequest
-from backend.app.tools.product_search import ProductSearchTool
+from app.tools import ToolRequest
+from app.tools.product_search import ProductSearchTool
 
 
 @pytest.fixture
@@ -148,6 +148,7 @@ def test_product_search_with_real_amazon_dataset(
     response = tool.execute(request)
 
     assert response.success is True
+    assert response.data["schema_version"] == "1.0"
 
     assert response.data["actual_count"] == 5
     assert len(response.data["products"]) == 5
@@ -407,3 +408,33 @@ def test_product_search_persists_result_to_database(
         assert saved_evidence.product_id == "B000001"
         assert saved_evidence.tool_call_id == "tool-call-001"
         assert saved_evidence.sample_scope["market"] == "US"
+
+
+def test_product_search_rejects_unsupported_schema_version() -> None:
+    tool = ProductSearchTool(
+        adapter_registry=object(),
+        repository=object(),
+    )
+    request = ToolRequest(
+        tenant_id="tenant-001",
+        user_id="user-001",
+        trace_id="trace-001",
+        parameters={
+            "schema_version": "2.0",
+            "task_id": "task-001",
+            "platform": "amazon",
+            "market": "US",
+            "category": "Coffee Makers",
+            "keyword": "portable coffee maker",
+            "product_limit": 1,
+            "sort_by": "default",
+            "data_source_mode": "fixed_dataset",
+        },
+    )
+
+    response = tool.execute(request)
+
+    assert response.success is False
+    assert response.error is not None
+    assert response.error.code == "SCHEMA_VERSION_UNSUPPORTED"
+    assert response.data["schema_version"] == "1.0"

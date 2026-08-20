@@ -20,7 +20,7 @@ from app.modules.market_intelligence.schemas import (
     NormalizedProduct,
     ProductSearchRequest,
 )
-from app.tools.contracts import ToolError, ToolRequest, ToolResponse
+from app.tools.support.contracts import ToolError, ToolRequest, ToolResponse
 
 
 NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]

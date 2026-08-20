@@ -24,7 +24,7 @@
 - NormalizedReview
 - MarketMetric
 - CompetitorItem
-- ProfitInput
+- ProfitInput（复用`app.tools`公开导出的定义）
 - ProfitAnalysis
 - ReviewInsight
 - EntryAssessment

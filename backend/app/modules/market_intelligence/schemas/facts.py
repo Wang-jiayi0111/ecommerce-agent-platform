@@ -77,6 +77,7 @@ class MarketMetric(MarketIntelligenceModel):
     value: Decimal | int | float | dict[str, Any] | list[Any] | None = None
     unit: NonEmptyStr | None = None
     status: MetricStatus
+    reason_code: NonEmptyStr | None = None
     scope: AnalysisScope
     methodology: NonEmptyStr
     evidence_ids: list[NonEmptyStr] = Field(default_factory=list)

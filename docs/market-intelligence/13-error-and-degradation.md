@@ -62,6 +62,8 @@
 | 关键数据全部缺失 | 任务 FAILED |
 | 多来源冲突 | 任务 DEGRADED，保留冲突证据 |
 
+成本完整性由Graph检查。成本缺失时不调用ProfitCalculatorTool。
+
 DEGRADED 报告必须包含 data_limitations，页面不能只显示“成功”。
 
 ## 6. 取消

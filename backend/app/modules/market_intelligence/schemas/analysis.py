@@ -44,18 +44,15 @@ class CompetitorItem(MarketIntelligenceModel):
         return self
 
 
-class ProfitInput(MarketIntelligenceModel):
-    selling_price: PositiveDecimal
-    product_cost: NonNegativeDecimal
-    platform_fee: NonNegativeDecimal
-    logistics_cost: NonNegativeDecimal
-    advertising_cost: NonNegativeDecimal
-    other_cost: NonNegativeDecimal = Decimal("0")
-    currency: CurrencyCode
-    minimum_margin: Ratio
-    evidence_ids: list[NonEmptyStr] = Field(min_length=1)
-    fulfillment_cost: NonNegativeDecimal = Decimal("0")
-    tariff_cost: NonNegativeDecimal = Decimal("0")
+# class ProfitInput(MarketIntelligenceModel):
+#     selling_price: PositiveDecimal
+#     product_cost: NonNegativeDecimal
+#     platform_fee: NonNegativeDecimal
+#     logistics_cost: NonNegativeDecimal
+#     advertising_cost: NonNegativeDecimal
+#     other_cost: NonNegativeDecimal = Decimal("0")
+#     currency: CurrencyCode
+#     minimum_margin: Ratio
 
 
 class ProfitAnalysis(MarketIntelligenceModel):
@@ -89,8 +86,6 @@ class ProfitAnalysis(MarketIntelligenceModel):
             raise ValueError(f"available profit analysis is missing: {', '.join(missing)}")
         if not self.breakdown:
             raise ValueError("available profit analysis must provide breakdown")
-        if not self.evidence_ids:
-            raise ValueError("available profit analysis must provide evidence_ids")
         return self
 
 

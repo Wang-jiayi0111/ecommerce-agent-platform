@@ -32,7 +32,7 @@
 | platforms | string array | 是 | 一期数组长度固定为1，只允许 taobao |
 | data_source_mode | enum | 是 | 当前为 fixed_dataset，后期官方接口使用 official_api |
 | collection | CollectionOptions | 是 | 采集范围 |
-| profit_constraints | ProfitInput 或 null | 否 | 缺少时利润结果为 unavailable |
+| profit_constraints | ProfitCalculatorParameters 或 null | 否 | 缺少时由Graph生成unavailable利润结果 |
 
 CollectionOptions：
 
@@ -43,6 +43,8 @@ CollectionOptions：
 | sort_by | enum | default、sales_desc、price_asc、price_desc |
 
 保留数组结构是为了以后增加授权平台。多平台阶段由 Graph 按平台分别调用 ProductSearchTool，再按平台保留样本范围和证据；当前固定数据集阶段不执行跨平台合并。
+
+ProfitCalculatorParameters继承`app.tools`公开导出的ProfitInput，并补充currency和minimum_margin。Graph只使用完整参数调用ProfitCalculatorTool。
 
 ## 4. MarketIntelligenceReport
 

@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated, Any
 from uuid import uuid4
+from datetime import datetime
 
 from pydantic import Field, StringConstraints, model_validator
 
@@ -65,9 +66,11 @@ class DatasetManifest(MarketIntelligenceModel):
     keyword: NonEmptyStr
     source_type: DatasetSourceType
     source_description: NonEmptyStr
-    generated_at: datetime
-    source_timestamp: datetime
-    expires_at: datetime | None = None
+    generated_at: datetime                  # fixed data 生成的时间
+    source_timestamp: datetime              # 数据来源快照时间
+    expires_at: datetime | None = None      # 数据过期时间
+    dataset_start_time: datetime | None = None # 这份数据覆盖哪个时间段
+    dataset_end_time: datetime | None = None
     license_or_authorization: NonEmptyStr
     checksums: dict[NonEmptyStr, Sha256]
 
@@ -103,6 +106,27 @@ class ReviewSearchRequest(MarketIntelligenceModel):
     keyword: NonEmptyStr
     product_ids: list[NonEmptyStr] = Field(min_length=1)
     review_limit_per_product: int = Field(ge=1,)
+
+class MarketDataRequest(MarketIntelligenceModel):
+    platform: NonEmptyStr
+    market: NonEmptyStr
+    category: NonEmptyStr
+    keyword: NonEmptyStr
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_time_range(self) -> "MarketDataRequest":
+        if (
+            self.start_time is not None
+            and self.end_time is not None
+            and self.start_time > self.end_time
+        ):
+            raise ValueError(
+                "start_time must not be later than end_time"
+            )
+
+        return self
 
 
 class AdapterCapabilities(MarketIntelligenceModel):

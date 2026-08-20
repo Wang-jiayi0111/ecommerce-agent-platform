@@ -10,14 +10,15 @@ ProfitCalculatorTool完成确定性的利润和毛利计算。市场情报 Agent
 
 ## 3. 输入
 
+ProfitCalculatorParameters继承`app.tools`公开导出的ProfitInput，并补充currency和minimum_margin。
+
 | 字段 | 类型 | 规则 |
 | --- | --- | --- |
-| selling_price | Decimal | 大于 0 |
+| price | Decimal | 大于 0 |
 | product_cost | Decimal | 大于等于 0 |
 | platform_fee | Decimal | 大于等于 0 |
 | logistics_cost | Decimal | 大于等于 0 |
 | advertising_cost | Decimal | 大于等于 0 |
-| other_cost | Decimal | 大于等于 0，默认 0 |
 | currency | string | 所有金额使用同一货币 |
 | minimum_margin | Decimal | 0 到 1 |
 
@@ -28,15 +29,14 @@ ProfitCalculatorTool完成确定性的利润和毛利计算。市场情报 Agent
         + platform_fee
         + logistics_cost
         + advertising_cost
-        + other_cost
 
-    profit = selling_price - total_cost
+    profit = price - total_cost
 
-    margin = profit / selling_price
+    margin = profit / price
 
     meets_minimum_margin = margin >= minimum_margin
 
-所有金额按货币最小单位和统一舍入规则处理。第一版使用 ROUND_HALF_UP，结果保留两位小数，margin 保留四位小数。
+margin保留四位小数。输出中的selling_price由price映射。
 
 ## 5. 输出
 
@@ -51,7 +51,7 @@ ProfitCalculatorTool完成确定性的利润和毛利计算。市场情报 Agent
 | breakdown | 每项成本 |
 | currency | 货币 |
 | calculation_version | 计算公式版本 |
-| evidence_refs | 输入来源 |
+| evidence_ids | 输入来源 |
 
 ## 6. 数据来源
 
@@ -62,14 +62,13 @@ ProfitCalculatorTool完成确定性的利润和毛利计算。市场情报 Agent
 - 售价小于等于 0：INVALID_ARGUMENT。
 - 成本为负数：INVALID_ARGUMENT。
 - 币种不一致：CURRENCY_MISMATCH。
-- 缺少成本：返回 unavailable，由 Graph 决定 DEGRADED。
+- 参数已提供但不合法：INVALID_ARGUMENT。
+- 缺少成本：Graph不调用本Tool，生成unavailable并决定DEGRADED。
 
 ## 8. 测试
 
 - 正利润、零利润和负利润。
 - 毛利刚好等于最低约束。
-- Decimal 舍入。
-- 缺失输入。
+- margin 舍入。
 - 负数和错误币种。
 - 相同输入得到相同输出。
-

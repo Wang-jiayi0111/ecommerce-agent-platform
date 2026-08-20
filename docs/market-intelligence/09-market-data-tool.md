@@ -22,7 +22,7 @@ MarketDataTool获取市场指标，或者对已有商品样本做明确标注的
 | --- | --- |
 | platform、market、category、keyword | 查询范围 |
 | data_source_mode | 数据源模式 |
-| time_range | 指标时间范围 |
+| date_range | 指标时间范围 |
 | products | ProductSearchTool 商品样本 |
 | evidence_refs | 商品或市场数据证据 |
 

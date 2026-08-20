@@ -26,8 +26,8 @@ fixed_dataset 仍然保留真实业务平台。DatasetAdapter 不能把 platform
 
     capabilities() -> AdapterCapabilities
     search_products(request, context) -> AdapterResult[list[NormalizedProduct]]
-    fetch_reviews(request, context) -> AdapterResult[list[NormalizedReview]]
-    fetch_market_metrics(request, context) -> AdapterResult[list[MarketMetric]]
+    search_reviews(request, context) -> AdapterResult[list[NormalizedReview]]
+    get_market_metrics(request, context) -> AdapterResult[list[MarketMetric]]
 
 AdapterCapabilities 明确当前实现支持哪些方法：
 

@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.core.security import get_current_principal, permissions_for_roles
 from app.main import app
-from app.tools.contracts import ProfitInput, calculate_profit
+from app.tools import ProfitInput, calculate_profit
 
 
 def principal_override():

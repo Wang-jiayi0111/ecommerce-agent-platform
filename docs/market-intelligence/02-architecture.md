@@ -57,7 +57,7 @@ MarketMetric  NormalizedProduct ReviewInsight      ProfitAnalysis
 | ProductSearchTool | 获取候选竞品和来源证据 |
 | build_competitor_matrix | 把NormalizedProduct转换成CompetitorItem，不额外增加同义Tool |
 | ReviewInsightTool | 返回评论样本、主题、情感、痛点、未满足需求和评论证据 |
-| ProfitCalculatorTool | 根据完整ProfitInput返回确定性的ProfitAnalysis |
+| ProfitCalculatorTool | 根据完整ProfitCalculatorParameters返回确定性的ProfitAnalysis，基础字段复用contracts.py中的ProfitInput |
 | synthesize_report | 综合四类结果，生成MarketIntelligenceReport |
 | validate_evidence | 校验结论、约束、数据限制和证据 |
 
@@ -65,7 +65,7 @@ MarketMetric  NormalizedProduct ReviewInsight      ProfitAnalysis
 
 - 当前独立页面把表单参数组装成 MarketIntelligenceRequest；未来根 Graph 中的 Supervisor 可以把自然语言需求解析成同一请求结构。MarketIntelligenceService 不承担通用意图识别。
 - MarketIntelligenceGraph 调用 Tool 并控制执行顺序、重试和降级。报告生成 Agent 读取 Tool 的结构化结果，不直接访问 Adapter、数据库、网页或平台 API。
-- MarketDataTool、ProductSearchTool生成的竞品矩阵和ReviewInsightTool结果共同进入分析层。ProfitCalculatorTool还需要有证据的ProfitInput；评论或市场指标不能直接生成成本。
+- MarketDataTool、ProductSearchTool生成的竞品矩阵和ReviewInsightTool结果共同进入分析层。Graph只把完整的ProfitCalculatorParameters交给ProfitCalculatorTool；成本缺失时生成unavailable结果。评论或市场指标不能直接生成成本。
 - 竞品价格可以作为售价或价格带证据。进入利润计算前，Graph 必须把它转换成币种和口径明确的测算场景，Agent 不能自行猜测采购、物流、平台或广告成本。
 - “产品机会点”在本模块中表示由市场空白、竞品差异、评论痛点和未满足需求支持的 opportunity_signals。涉及具体产品定位、规格组合、定价策略和卖点时，把证据化机会交给商品策略 Agent。
 - 最终报告同时保留事实、推断、机会、风险、利润约束结果、数据限制和 evidence_ids。证据不足时把任务标记为 DEGRADED、记录 data_limitations，并删除无依据的强进入结论。
@@ -76,7 +76,7 @@ MarketMetric  NormalizedProduct ReviewInsight      ProfitAnalysis
 
 - CompetitorItem和EntryAssessment在04-data-models.md中定义，并进入MarketIntelligenceReport。
 - MarketIntelligenceState保存competitor_matrix，Graph在search_products之后执行build_competitor_matrix。
-- 明确 DatasetAdapter 中 `profit_inputs.json` 进入 ProfitCalculatorTool 的读取接口；现有 Adapter 公共接口没有利润输入读取方法。
+- 明确 DatasetAdapter 中 `profit_inputs.json` 进入 Graph 的读取接口；Graph校验完整后调用ProfitCalculatorTool。现有 Adapter 公共接口没有利润输入读取方法。
 - US市场示例属于目标业务流程。当前必须使用覆盖US市场、评论和成本的固定数据集；以后使用具备相应权限的OfficialApiAdapter。数据范围不足时必须降级，不能生成US全市场强结论。
 
 ## 3. 各层负责什么

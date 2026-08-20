@@ -22,20 +22,15 @@ from app.modules.market_intelligence.schemas.common import (
     MetricStatus,
     NonEmptyStr,
 )
-from app.modules.market_intelligence.schemas.facts import (
-    NormalizedReview,
-)
-from app.repositories.collection_repository import (
-    CollectionRepository,
-)
-from app.tools.contracts import (
+from app.modules.market_intelligence.schemas.facts import NormalizedReview
+from app.repositories.collection_repository import CollectionRepository
+from app.tools.support.contracts import (
     ToolError,
     ToolRequest,
     ToolResponse,
 )
-from app.tools.review_analyzer import (
-    ReviewAnalyzer,
-)
+from app.tools.support.review_analyzer import ReviewAnalyzer
+from app.tools.support.llm_review_analyzer import LLMReviewAnalyzer
 
 
 class ReviewInsightToolParameters(
@@ -73,13 +68,8 @@ class ReviewInsightTool:
             max_reviews_per_product
         )
 
-    def execute(
-        self,
-        request: ToolRequest,
-    ) -> ToolResponse:
-        identity_error = (
-            self._validate_tool_identity(request)
-        )
+    def execute(self, request: ToolRequest) -> ToolResponse:
+        identity_error = self._validate_tool_identity(request)
 
         if identity_error is not None:
             return self._error_response(
@@ -90,11 +80,7 @@ class ReviewInsightTool:
             )
 
         try:
-            parameters = (
-                ReviewInsightToolParameters.model_validate(
-                    request.parameters
-                )
-            )
+            parameters = ReviewInsightToolParameters.model_validate(request.parameters)
         except ValidationError as exc:
             return self._error_response(
                 request=request,
@@ -108,25 +94,18 @@ class ReviewInsightTool:
             f"{parameters.data_source_mode.value}"
         )
 
-        if (
-            parameters.schema_version
-            != self.schema_version
-        ):
+        if parameters.schema_version != self.schema_version:
             return self._error_response(
                 request=request,
                 source=source,
                 code="SCHEMA_VERSION_UNSUPPORTED",
                 message=(
-                    "Unsupported ReviewInsightTool "
-                    f"schema version: "
+                    "Unsupported ReviewInsightTool schema version: "
                     f"{parameters.schema_version}."
                 ),
             )
 
-        if (
-            parameters.review_limit_per_product
-            > self.max_reviews_per_product
-        ):
+        if parameters.review_limit_per_product > self.max_reviews_per_product:
             return self._error_response(
                 request=request,
                 source=source,
@@ -153,10 +132,7 @@ class ReviewInsightTool:
             source=source,
         )
 
-        if isinstance(
-            capabilities,
-            ToolResponse,
-        ):
+        if isinstance(capabilities,ToolResponse):
             return capabilities
 
         capability_error = (
@@ -213,28 +189,16 @@ class ReviewInsightTool:
             )
 
         try:
-            run = CollectionRun.model_validate(
-                self._model_payload(
-                    result.run
-                )
-            )
-
+            run = CollectionRun.model_validate(self._model_payload(result.run))
             reviews = [
-                NormalizedReview.model_validate(
-                    self._model_payload(review)
-                )
+                NormalizedReview.model_validate(self._model_payload(review))
                 for review in result.data
             ]
-
             evidence_refs = [
-                EvidenceReference.model_validate(
-                    self._model_payload(evidence)
-                )
+                EvidenceReference.model_validate(self._model_payload(evidence))
                 for evidence in result.evidence_refs
             ]
-
             warnings = list(result.warnings)
-
             self._validate_adapter_result(
                 request=request,
                 parameters=parameters,
@@ -314,26 +278,13 @@ class ReviewInsightTool:
             trace_id=request.trace_id,
             degraded=degraded,
             data={
+                "schema_version": self.schema_version,
                 "collection_run_id": run.id,
                 "status": run.status.value,
                 "warnings": warnings,
-                "reviews": [
-                    review.model_dump(
-                        mode="json"
-                    )
-                    for review in reviews
-                ],
-                "review_insight": (
-                    review_insight.model_dump(
-                        mode="json"
-                    )
-                ),
-                "evidence_refs": [
-                    evidence.model_dump(
-                        mode="json"
-                    )
-                    for evidence in evidence_refs
-                ],
+                "reviews": [review.model_dump(mode="json")for review in reviews],
+                "review_insight": review_insight.model_dump(mode="json"),
+                "evidence_refs": [evidence.model_dump(mode="json") for evidence in evidence_refs],
             },
         )
 
@@ -355,8 +306,7 @@ class ReviewInsightTool:
                 source=source,
                 code="UNSUPPORTED_DATA_SOURCE",
                 message=(
-                    "No commerce adapter is registered "
-                    f"for {source}."
+                    f"No commerce adapter is registered for {source}."
                 ),
             )
 
@@ -369,9 +319,7 @@ class ReviewInsightTool:
     ):
         try:
             return AdapterCapabilities.model_validate(
-                self._model_payload(
-                    adapter.capabilities()
-                )
+                self._model_payload(adapter.capabilities())
             )
         except AdapterError as exc:
             return self._adapter_error_response(
@@ -388,9 +336,7 @@ class ReviewInsightTool:
                 request=request,
                 source=source,
                 code="SCHEMA_VALIDATION_FAILED",
-                message=(
-                    "Adapter returned invalid capabilities."
-                ),
+                message=("Adapter returned invalid capabilities."),
             )
 
     def _validate_capabilities(
@@ -406,10 +352,7 @@ class ReviewInsightTool:
                 request=request,
                 source=source,
                 code="UNSUPPORTED_OPERATION",
-                message=(
-                    f"Adapter {source} does not "
-                    "support review search."
-                ),
+                message=(f"Adapter {source} does not support review search."),
             )
 
         if (
@@ -421,8 +364,7 @@ class ReviewInsightTool:
                 source=source,
                 code="INVALID_ARGUMENT",
                 message=(
-                    "review_limit_per_product exceeds "
-                    "adapter maximum "
+                    "review_limit_per_product exceeds adapter maximum "
                     f"{capabilities.max_reviews_per_product}."
                 ),
             )
@@ -439,200 +381,84 @@ class ReviewInsightTool:
         evidence_refs: list[EvidenceReference],
     ) -> None:
         if run.tenant_id != request.tenant_id:
-            raise ValueError(
-                "run.tenant_id does not match request"
-            )
-
+            raise ValueError("run.tenant_id does not match request")
         if run.trace_id != request.trace_id:
-            raise ValueError(
-                "run.trace_id does not match request"
-            )
-
+            raise ValueError("run.trace_id does not match request")
         if run.task_id != parameters.task_id:
-            raise ValueError(
-                "run.task_id does not match parameters"
-            )
+            raise ValueError("run.task_id does not match parameters")
 
         expected_requested_count = (
-            len(set(parameters.product_ids))
-            * parameters.review_limit_per_product
+            len(set(parameters.product_ids)) * parameters.review_limit_per_product
         )
 
-        if (
-            run.requested_count
-            != expected_requested_count
-        ):
-            raise ValueError(
-                "run.requested_count is inconsistent"
-            )
-
+        if run.requested_count != expected_requested_count:
+            raise ValueError("run.requested_count is inconsistent")
         if run.actual_count != len(reviews):
-            raise ValueError(
-                "run.actual_count does not match reviews"
-            )
-
+            raise ValueError("run.actual_count does not match reviews")
         if not reviews:
-            raise ValueError(
-                "successful review result must not be empty"
-            )
+            raise ValueError("successful review result must not be empty")
 
-        requested_product_ids = set(
-            parameters.product_ids
-        )
-
-        review_ids = [
-            review.review_id
-            for review in reviews
-        ]
+        requested_product_ids = set(parameters.product_ids)
+        review_ids = [review.review_id for review in reviews]
 
         if len(review_ids) != len(set(review_ids)):
-            raise ValueError(
-                "duplicate review_id returned by adapter"
-            )
+            raise ValueError("duplicate review_id returned by adapter")
 
-        review_counts = Counter(
-            review.product_id
-            for review in reviews
-        )
+        review_counts = Counter(review.product_id for review in reviews)
 
         for review in reviews:
             if review.collection_run_id != run.id:
-                raise ValueError(
-                    "review.collection_run_id "
-                    "must match run.id"
-                )
+                raise ValueError("review.collection_run_id must match run.id")
+            if review.product_id not in requested_product_ids:
+                raise ValueError("adapter returned review for unrequested product")
+            if review.platform.casefold() != parameters.platform.casefold():
+                raise ValueError("review.platform does not match request")
 
-            if (
-                review.product_id
-                not in requested_product_ids
-            ):
-                raise ValueError(
-                    "adapter returned review for "
-                    "unrequested product"
-                )
-
-            if (
-                review.platform.casefold()
-                != parameters.platform.casefold()
-            ):
-                raise ValueError(
-                    "review.platform does not "
-                    "match request"
-                )
-
-        for product_id, count in (
-            review_counts.items()
-        ):
-            if (
-                count
-                > parameters.review_limit_per_product
-            ):
-                raise ValueError(
-                    "adapter returned too many "
-                    f"reviews for {product_id}"
-                )
+        for product_id, count in (review_counts.items()):
+            if count > parameters.review_limit_per_product:
+                raise ValueError(f"adapter returned too many reviews for {product_id}")
 
         if len(evidence_refs) != len(reviews):
-            raise ValueError(
-                "review count and evidence count "
-                "must match"
-            )
+            raise ValueError("review count and evidence count must match")
 
         for review, evidence in zip(
             reviews,
             evidence_refs,
             strict=True,
         ):
-            if (
-                evidence.collection_run_id
-                != run.id
-            ):
-                raise ValueError(
-                    "evidence.collection_run_id "
-                    "must match run.id"
-                )
+            if evidence.collection_run_id != run.id:
+                raise ValueError("evidence.collection_run_id must match run.id")
+            if evidence.review_id != review.review_id:
+                raise ValueError("evidence.review_id must match review.review_id")
+            if evidence.product_id != review.product_id:
+                raise ValueError("evidence.product_id must match review.product_id")
+            if evidence.tool_call_id != parameters.tool_call_id:
+                raise ValueError("evidence.tool_call_id must match tool_call_id")
 
-            if (
-                evidence.review_id
-                != review.review_id
-            ):
-                raise ValueError(
-                    "evidence.review_id must match "
-                    "review.review_id"
-                )
+            snapshot_ref = getattr(review, "source_snapshot_ref", None)
 
-            if (
-                evidence.product_id
-                != review.product_id
-            ):
-                raise ValueError(
-                    "evidence.product_id must match "
-                    "review.product_id"
-                )
+            if snapshot_ref is not None and evidence.snapshot_ref != snapshot_ref:
+                raise ValueError("evidence.snapshot_ref must match review.source_snapshot_ref")
 
-            if (
-                evidence.tool_call_id
-                != parameters.tool_call_id
-            ):
-                raise ValueError(
-                    "evidence.tool_call_id must match "
-                    "tool_call_id"
-                )
+        sample_scope = evidence_refs[0].sample_scope
 
-            snapshot_ref = getattr(
-                review,
-                "source_snapshot_ref",
-                None,
-            )
-
-            if (
-                snapshot_ref is not None
-                and evidence.snapshot_ref
-                != snapshot_ref
-            ):
-                raise ValueError(
-                    "evidence.snapshot_ref must match "
-                    "review.source_snapshot_ref"
-                )
-
-        sample_scope = (
-            evidence_refs[0].sample_scope
-        )
-
-        if (
-            sample_scope.actual_review_count
-            != len(reviews)
-        ):
-            raise ValueError(
-                "sample_scope.actual_review_count "
-                "does not match reviews"
-            )
+        if sample_scope.actual_review_count != len(reviews):
+            raise ValueError("sample_scope.actual_review_count does not match reviews")
 
         for evidence in evidence_refs:
             if evidence.sample_scope != sample_scope:
-                raise ValueError(
-                    "evidence sample_scope values "
-                    "must match"
-                )
+                raise ValueError("evidence sample_scope values must match")
 
     @staticmethod
-    def _validate_tool_identity(
-        request: ToolRequest,
-    ) -> str | None:
+    def _validate_tool_identity(request: ToolRequest) -> str | None:
         values = {
             "tenant_id": request.tenant_id,
             "user_id": request.user_id,
             "trace_id": request.trace_id,
         }
-
         for field_name, value in values.items():
-            if (
-                not isinstance(value, str)
-                or not value.strip()
-            ):
-                return (
-                    f"{field_name} is required."
-                )
+            if not isinstance(value, str) or not value.strip():
+                return f"{field_name} is required."
 
         return None
 
@@ -650,15 +476,8 @@ class ReviewInsightTool:
         messages = []
 
         for item in error.errors():
-            location = ".".join(
-                str(part)
-                for part in item["loc"]
-            )
-
-            messages.append(
-                f"{location}: {item['msg']}"
-            )
-
+            location = ".".join(str(part) for part in item["loc"])
+            messages.append(f"{location}: {item['msg']}")
         return "; ".join(messages)
 
     @classmethod
@@ -690,12 +509,10 @@ class ReviewInsightTool:
         retryable: bool = False,
         collection_run_id: str | None = None,
     ) -> ToolResponse:
-        data = {}
+        data = {"schema_version": ReviewInsightTool.schema_version}
 
         if collection_run_id is not None:
-            data["collection_run_id"] = (
-                collection_run_id
-            )
+            data["collection_run_id"] = collection_run_id
 
         return ToolResponse(
             success=False,

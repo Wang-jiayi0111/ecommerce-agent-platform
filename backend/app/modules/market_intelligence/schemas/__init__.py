@@ -2,7 +2,7 @@ from app.modules.market_intelligence.schemas.analysis import (
     CompetitorItem,
     EntryAssessment,
     ProfitAnalysis,
-    ProfitInput,
+    # ProfitInput,
     ReviewInsight,
     ReviewTheme,
 )
@@ -17,6 +17,7 @@ from app.modules.market_intelligence.schemas.adapter import (
     EvidenceType,
     ProductSearchRequest,
     ReviewSearchRequest,
+    MarketDataRequest,
     ProductSort,
 )
 from app.modules.market_intelligence.schemas.common import (
@@ -28,11 +29,13 @@ from app.modules.market_intelligence.schemas.common import (
     ProfitStatus,
     SalesValueType,
     Sentiment,
+    NonEmptyStr,
 )
 from app.modules.market_intelligence.schemas.facts import (
     MarketMetric,
     NormalizedProduct,
     NormalizedReview,
+    MarketMetric,
 )
 
 __all__ = [
@@ -54,14 +57,17 @@ __all__ = [
     "MetricStatus",
     "NormalizedProduct",
     "NormalizedReview",
+    "MarketMetric",
     "ProfitAnalysis",
     "ProfitInput",
     "ProfitStatus",
     "ProductSearchRequest",
     "ReviewSearchRequest",
+    "MarketDataRequest",
     "ProductSort",
     "ReviewInsight",
     "ReviewTheme",
     "SalesValueType",
     "Sentiment",
+    "NonEmptyStr"
 ]
