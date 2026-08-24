@@ -1,4 +1,3 @@
-import json
 from collections import Counter, defaultdict
 from decimal import Decimal
 
@@ -16,6 +15,7 @@ from app.modules.market_intelligence.schemas.common import (
     Sentiment,
 )
 from app.modules.market_intelligence.schemas.facts import NormalizedReview
+from app.prompts.market_intelligence import build_review_analysis_prompt
 
 
 class ReviewSemanticExtraction(MarketIntelligenceModel):
@@ -162,26 +162,13 @@ class LLMReviewAnalyzer:
             }
             for review in reviews
         ]
+        system_prompt, user_prompt = build_review_analysis_prompt(
+            payload,
+            output_language=self.output_language,
+        )
         messages = [
-            LLMMessage(
-                role="system",
-                content=(
-                    "You analyze e-commerce reviews. Analyze each review independently. "
-                    "Preserve every review_id exactly. Set sentiment to positive, neutral, "
-                    "or negative. Extract concise, reusable semantic labels for themes, "
-                    "pain_points, and unmet_needs. Use an empty list when the review does "
-                    "not support a label. Reuse the same label for semantically equivalent "
-                    f"concepts and write all labels in {self.output_language}. Do not infer "
-                    "unsupported facts. Return JSON only."
-                ),
-            ),
-            LLMMessage(
-                role="user",
-                content=(
-                    "Analyze all reviews in this JSON array:\n"
-                    + json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-                ),
-            ),
+            LLMMessage(role="system", content=system_prompt),
+            LLMMessage(role="user", content=user_prompt),
         ]
 
         return self.client.generate_structured(

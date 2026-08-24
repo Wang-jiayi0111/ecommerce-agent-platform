@@ -1,9 +1,10 @@
 from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
-from decimal import Decimal, ROUND_HALF_UP
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.modules.market_intelligence.schemas import ProfitInput
 
 MONEY_QUANT = Decimal("0.01")
 MARGIN_QUANT = Decimal("0.0001")
@@ -13,6 +14,10 @@ class ToolRequest(BaseModel):
     tenant_id: str
     user_id: str
     trace_id: str
+    task_id: str | None = None
+    step_name: str | None = None
+    attempt: int = Field(default=1, ge=1)
+    idempotency_key: str | None = None
     parameters: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -46,12 +51,12 @@ class ToolResponse(BaseModel):
         return self
 
 
-class ProfitInput(BaseModel):
-    price: Decimal = Field(gt=Decimal("0"))
-    product_cost: Decimal = Field(ge=Decimal("0"))
-    platform_fee: Decimal = Field(ge=Decimal("0"))
-    logistics_cost: Decimal = Field(ge=Decimal("0"))
-    advertising_cost: Decimal = Field(ge=Decimal("0"))
+# class ProfitInput(BaseModel):
+#     price: Decimal = Field(gt=Decimal("0"))
+#     product_cost: Decimal = Field(ge=Decimal("0"))
+#     platform_fee: Decimal = Field(ge=Decimal("0"))
+#     logistics_cost: Decimal = Field(ge=Decimal("0"))
+#     advertising_cost: Decimal = Field(ge=Decimal("0"))
 
 def calculate_profit(payload: ProfitInput) -> dict[str, Decimal]:
     total_cost = (

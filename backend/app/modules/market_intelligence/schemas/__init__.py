@@ -1,11 +1,3 @@
-from app.modules.market_intelligence.schemas.analysis import (
-    CompetitorItem,
-    EntryAssessment,
-    ProfitAnalysis,
-    # ProfitInput,
-    ReviewInsight,
-    ReviewTheme,
-)
 from app.modules.market_intelligence.schemas.adapter import (
     AdapterCapabilities,
     CollectionRun,
@@ -15,10 +7,17 @@ from app.modules.market_intelligence.schemas.adapter import (
     DatasetSourceType,
     EvidenceReference,
     EvidenceType,
-    ProductSearchRequest,
-    ReviewSearchRequest,
     MarketDataRequest,
+    ProductSearchRequest,
     ProductSort,
+    ReviewSearchRequest,
+)
+from app.modules.market_intelligence.schemas.analysis import (
+    CompetitorItem,
+    EntryAssessment,
+    ProfitAnalysis,
+    ReviewInsight,
+    ReviewTheme,
 )
 from app.modules.market_intelligence.schemas.common import (
     AnalysisScope,
@@ -26,25 +25,42 @@ from app.modules.market_intelligence.schemas.common import (
     DataStatus,
     EntryDecision,
     MetricStatus,
+    NonEmptyStr,
     ProfitStatus,
     SalesValueType,
     Sentiment,
-    NonEmptyStr,
 )
 from app.modules.market_intelligence.schemas.facts import (
     MarketMetric,
     NormalizedProduct,
     NormalizedReview,
-    MarketMetric,
+)
+from app.modules.market_intelligence.schemas.profit import ProfitCalculatorParameters, ProfitInput
+from app.modules.market_intelligence.schemas.report import (
+    DataLimitation,
+    LimitationStatus,
+    MarketIntelligenceReport,
+    MarketIntelligenceResultPayload,
+    MarketSnapshot,
+    ReportStatus,
+    Statement,
+)
+from app.modules.market_intelligence.schemas.request import (
+    CollectionOptions,
+    MarketIntelligenceBusinessContext,
+    MarketIntelligenceContext,
+    MarketIntelligenceRequest,
 )
 
 __all__ = [
     "AdapterCapabilities",
     "AnalysisScope",
+    "CollectionOptions",
     "CollectionRun",
     "CollectionStatus",
     "CompetitorItem",
     "DataLevel",
+    "DataLimitation",
     "DatasetManifest",
     "DatasetSourceType",
     "DataSourceMode",
@@ -53,21 +69,30 @@ __all__ = [
     "EntryDecision",
     "EvidenceReference",
     "EvidenceType",
+    "LimitationStatus",
+    "MarketDataRequest",
+    "MarketIntelligenceContext",
+    "MarketIntelligenceBusinessContext",
+    "MarketIntelligenceReport",
+    "MarketIntelligenceResultPayload",
+    "MarketIntelligenceRequest",
     "MarketMetric",
+    "MarketSnapshot",
     "MetricStatus",
+    "NonEmptyStr",
     "NormalizedProduct",
     "NormalizedReview",
-    "MarketMetric",
-    "ProfitAnalysis",
-    "ProfitInput",
-    "ProfitStatus",
     "ProductSearchRequest",
-    "ReviewSearchRequest",
-    "MarketDataRequest",
     "ProductSort",
+    "ProfitAnalysis",
+    "ProfitCalculatorParameters",
+    "ProfitStatus",
+    "ProfitInput",
+    "ReportStatus",
     "ReviewInsight",
+    "ReviewSearchRequest",
     "ReviewTheme",
     "SalesValueType",
     "Sentiment",
-    "NonEmptyStr"
+    "Statement",
 ]

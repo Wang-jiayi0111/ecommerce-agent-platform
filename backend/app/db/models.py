@@ -1,11 +1,11 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
-from decimal import Decimal
 from sqlalchemy import (
     JSON,
-    Boolean, 
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -51,6 +51,32 @@ class AgentTaskRecord(TenantAuditRecord):
     events: Mapped[list[str]] = mapped_column(JSON, default=list)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    claimed_by: Mapped[str | None] = mapped_column(String(96), nullable=True, index=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    heartbeat_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    result_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class TaskEventRecord(TenantAuditRecord):
+    __tablename__ = "task_event"
+
+    task_id: Mapped[str] = mapped_column(String(36), index=True)
+    event_type: Mapped[str] = mapped_column(String(64), index=True)
+    state_version: Mapped[int] = mapped_column(Integer)
+    step: Mapped[str | None] = mapped_column(String(96), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    summary: Mapped[str] = mapped_column(Text)
+
 
 class AgentStepRecord(TenantAuditRecord):
     __tablename__ = "agent_step"
@@ -59,6 +85,14 @@ class AgentStepRecord(TenantAuditRecord):
     step_name: Mapped[str] = mapped_column(String(64), index=True)
     status: Mapped[str] = mapped_column(String(32), index=True)
     attempt: Mapped[int] = mapped_column(Integer, default=1)
+    state_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class ToolCallRecord(TenantAuditRecord):
@@ -68,6 +102,49 @@ class ToolCallRecord(TenantAuditRecord):
     tool_name: Mapped[str] = mapped_column(String(96), index=True)
     status: Mapped[str] = mapped_column(String(32), index=True)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    step_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True
+    )
+    request_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    response_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class GraphCheckpointRecord(TenantAuditRecord):
+    __tablename__ = "graph_checkpoint"
+    __table_args__ = (
+        UniqueConstraint(
+            "task_id",
+            "graph_name",
+            "state_version",
+            name="uq_checkpoint_task_graph_version",
+        ),
+    )
+
+    task_id: Mapped[str] = mapped_column(String(36), index=True)
+    graph_name: Mapped[str] = mapped_column(String(96), index=True)
+    current_step: Mapped[str] = mapped_column(String(96))
+    state_version: Mapped[int] = mapped_column(Integer)
+    state_payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+class MarketIntelligenceReportRecord(TenantAuditRecord):
+    __tablename__ = "market_intelligence_report"
+    __table_args__ = (UniqueConstraint("task_id", name="uq_market_report_task"),)
+
+    task_id: Mapped[str] = mapped_column(String(36), index=True)
+    report_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    schema_version: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    report_hash: Mapped[str] = mapped_column(String(64), index=True)
+    report_payload: Mapped[dict[str, Any]] = mapped_column(JSON)
 
 class CollectionRunRecord(TenantAuditRecord):
     __tablename__ = "collection_run"

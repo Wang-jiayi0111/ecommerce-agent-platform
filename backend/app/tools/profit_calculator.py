@@ -1,39 +1,18 @@
 from decimal import Decimal
-from typing import Any
 
-from pydantic import Field, ValidationError
+from pydantic import ValidationError
 
 from app.modules.market_intelligence.schemas.analysis import ProfitAnalysis
-from app.modules.market_intelligence.schemas.common import (
-    CurrencyCode,
-    NonEmptyStr,
-    ProfitStatus,
-    Ratio,
+from app.modules.market_intelligence.schemas.common import ProfitStatus
+from app.modules.market_intelligence.schemas.profit import (
+    ProfitCalculatorParameters,
 )
 from app.tools.support.contracts import (
-    ProfitInput,
     ToolError,
     ToolRequest,
     ToolResponse,
     calculate_profit,
 )
-
-
-class ProfitCalculatorParameters(ProfitInput):
-    """
-    ProfitCalculatorTool 的公开参数。
-
-    直接继承 support/contracts.py 中已有的 ProfitInput，
-    不重复定义 price、product_cost 等利润计算字段。
-
-    这里仅补充市场情报场景所需要的上下文：
-    - minimum_margin: 用户要求的最低毛利率
-    - currency: 当前测算币种
-    """
-
-    schema_version: NonEmptyStr = "1.0"
-    minimum_margin: Ratio
-    currency: CurrencyCode
 
 
 class ProfitCalculatorTool:

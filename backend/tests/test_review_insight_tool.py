@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.composition import (
+from backend.app.modules.market_intelligence.composition import (
     build_commerce_adapter_registry,
     build_product_search_tool,
     build_repository,

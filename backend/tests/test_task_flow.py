@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -92,7 +94,7 @@ def test_profit_calculator_is_deterministic() -> None:
             advertising_cost=10,
         )
     )
-    assert result == {"revenue": 100, "total_cost": 70, "profit": 30, "margin": 0.3}
+    assert result == {"revenue": Decimal("100"), "total_cost": Decimal("70"), "profit": Decimal("30"), "margin": Decimal("0.3")}
 
 
 def test_openapi_contains_prd_contracts() -> None:

@@ -1,18 +1,21 @@
+from app.composition import build_application_container
 from app.core.config import settings
 from app.db import SessionFactory, init_database
-from app.repositories import SQLAlchemyTaskRepository
-from app.services import DashboardService, TaskService
+from app.services import DashboardService, TaskPreviewService, TaskService
 
 if settings.auto_create_schema and settings.environment.lower() not in {"production", "prod"}:
     init_database()
-task_repository = SQLAlchemyTaskRepository(SessionFactory)
-task_service = TaskService(repository=task_repository)
-dashboard_service = DashboardService()
+
+container = build_application_container(settings, SessionFactory)
 
 
 def get_task_service() -> TaskService:
-    return task_service
+    return container.task_service
+
+
+def get_task_preview_service() -> TaskPreviewService:
+    return container.task_preview_service
 
 
 def get_dashboard_service() -> DashboardService:
-    return dashboard_service
+    return container.dashboard_service

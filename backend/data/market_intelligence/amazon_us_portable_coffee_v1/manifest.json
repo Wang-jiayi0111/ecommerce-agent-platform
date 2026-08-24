@@ -6,6 +6,13 @@
   "market": "US",
   "category": "portable coffee",
   "keyword": "portable coffee maker",
+  "aliases": [
+    "便携咖啡机",
+    "便携式咖啡机",
+    "旅行咖啡机",
+    "portable coffee maker",
+    "travel coffee maker"
+  ],
   "source_type": "anonymized_snapshot",
   "source_description": "McAuley-Lab/Amazon-Reviews-2023",
   "generated_at": "2026-08-16T09:03:57.2598968Z",

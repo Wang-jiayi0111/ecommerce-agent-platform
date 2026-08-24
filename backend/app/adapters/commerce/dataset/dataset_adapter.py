@@ -1,22 +1,28 @@
 import hashlib
 import json
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 from uuid import NAMESPACE_URL, uuid5
-from packaging.version import InvalidVersion, Version
 
+from packaging.version import InvalidVersion, Version
 from pydantic import ValidationError
 
 from app.adapters.commerce.commerce_adapter_base import AdapterContext, AdapterError, AdapterResult
+from app.adapters.commerce.dataset.catalog import (
+    DatasetCatalog,
+    DatasetCatalogError,
+    DatasetRegistry,
+)
+from app.adapters.commerce.dataset.mappers import (
+    AmazonDatasetMapper,
+)
 from app.adapters.commerce.dataset.mappers.dataset_mapper_base import (
     PlatformDatasetMapper,
     ProductMappingContext,
     ReviewMappingContext,
-)
-from app.adapters.commerce.dataset.mappers import (
-    AmazonDatasetMapper,
 )
 from app.adapters.commerce.dataset.schemas import (
     DatasetMarketMetricRecord,
@@ -27,21 +33,20 @@ from app.modules.market_intelligence.schemas import (
     CollectionRun,
     CollectionStatus,
     DataLevel,
-    DataSourceMode,
-    DataStatus,
     DatasetManifest,
     DatasetSourceType,
+    DataSourceMode,
+    DataStatus,
     EvidenceReference,
-    NormalizedProduct,
-    NormalizedReview,
-    ProductSearchRequest,
-    ReviewSearchRequest,
-    ProductSort,
     MarketDataRequest,
     MarketMetric,
     MetricStatus,
+    NormalizedProduct,
+    NormalizedReview,
+    ProductSearchRequest,
+    ProductSort,
+    ReviewSearchRequest,
 )
-
 
 DEFAULT_DATASET_ROOT = (
     Path(__file__).resolve().parents[4] / "data" / "market_intelligence"
@@ -93,6 +98,7 @@ class DatasetAdapter:
         platform: str,
         *,
         dataset_root: str | Path = DEFAULT_DATASET_ROOT,
+        dataset_registry: DatasetRegistry | None = None,
         mappers: Iterable[PlatformDatasetMapper] | None = None,
         dataset_permissions: Mapping[str, Iterable[str]] | None = None,
         public_dataset_ids: Iterable[str] | None = None,
@@ -109,6 +115,7 @@ class DatasetAdapter:
 
         self.platform = normalized_platform
         self.dataset_root = Path(dataset_root).resolve()
+        self.dataset_registry = dataset_registry
         self.max_products = max_products
         self.max_reviews_per_product = max_reviews_per_product
 
@@ -506,37 +513,29 @@ class DatasetAdapter:
             raise
 
 
-    def _find_dataset(self, request: ProductSearchRequest | ReviewSearchRequest | MarketDataRequest) -> DatasetSelection:
-        if not self.dataset_root.is_dir():
-            raise AdapterError(
-                "DATA_SOURCE_DISABLED",
-                f"Dataset root does not exist: {self.dataset_root.name}.",
-            )
+    def _find_dataset(
+        self,
+        request: ProductSearchRequest | ReviewSearchRequest | MarketDataRequest,
+    ) -> DatasetSelection:
         matches: list[DatasetSelection] = []
         try:
-            dataset_dirs = sorted(
-                path for path in self.dataset_root.iterdir() if path.is_dir()
-            )
-        except OSError as exc:
+            registry = self.dataset_registry or DatasetCatalog(self.dataset_root).load()
+            self.dataset_registry = registry
+        except DatasetCatalogError as exc:
             raise AdapterError(
-                "COLLECTION_INTERNAL_ERROR",
-                "Dataset root cannot be read.",
-                retryable=True,
+                exc.code,
+                str(exc),
+                retryable=exc.code == "DATASET_CATALOG_UNAVAILABLE",
             ) from exc
 
-        for dataset_dir in dataset_dirs:
-            manifest_path = dataset_dir / "manifest.json"
-            if not manifest_path.is_file():
-                continue
-
-            manifest = self._load_manifest(manifest_path)
-
+        for entry in registry.all():
+            manifest = entry.manifest
             if not self._manifest_matches(manifest, request):
                 continue
             matches.append(
                 DatasetSelection(
-                    dataset_dir=dataset_dir,
-                    product_path=self._product_path(dataset_dir, manifest),
+                    dataset_dir=entry.dataset_dir,
+                    product_path=self._product_path(entry.dataset_dir, manifest),
                     manifest=manifest,
                 )
             )

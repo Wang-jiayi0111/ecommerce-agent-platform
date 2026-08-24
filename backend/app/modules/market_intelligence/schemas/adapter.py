@@ -2,7 +2,6 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated, Any
 from uuid import uuid4
-from datetime import datetime
 
 from pydantic import Field, StringConstraints, model_validator
 
@@ -64,6 +63,7 @@ class DatasetManifest(MarketIntelligenceModel):
     market: NonEmptyStr
     category: NonEmptyStr
     keyword: NonEmptyStr
+    aliases: list[NonEmptyStr] = Field(default_factory=list)
     source_type: DatasetSourceType
     source_description: NonEmptyStr
     generated_at: datetime                  # fixed data 生成的时间
@@ -78,6 +78,9 @@ class DatasetManifest(MarketIntelligenceModel):
     def validate_manifest(self) -> "DatasetManifest":
         if not self.checksums:
             raise ValueError("checksums must contain at least one dataset file")
+        normalized_aliases = [" ".join(alias.casefold().split()) for alias in self.aliases]
+        if len(normalized_aliases) != len(set(normalized_aliases)):
+            raise ValueError("aliases must not contain duplicates")
         if self.expires_at is not None:
             try:
                 invalid_range = self.expires_at <= self.generated_at

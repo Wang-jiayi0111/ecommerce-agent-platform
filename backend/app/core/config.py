@@ -1,8 +1,8 @@
 import json
 from dataclasses import dataclass
 from os import getenv
-from dotenv import load_dotenv
 
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -34,6 +34,7 @@ class Settings:
     jwt_issuer: str | None = getenv("JWT_ISSUER")
     jwt_audience: str | None = getenv("JWT_AUDIENCE")
     task_execution_mode: str = getenv("TASK_EXECUTION_MODE", "inline")
+    task_lease_seconds: int = int(getenv("TASK_LEASE_SECONDS", "300"))
     auto_create_schema: bool = getenv("AUTO_CREATE_SCHEMA", "true").lower() == "true"
     access_token_minutes: int = int(getenv("ACCESS_TOKEN_MINUTES", "480"))
     bootstrap_admin_tenant: str = getenv("BOOTSTRAP_ADMIN_TENANT", "local")
@@ -84,6 +85,8 @@ class Settings:
                 raise RuntimeError("JWT_ISSUER and JWT_AUDIENCE are required in production")
         if self.task_execution_mode not in {"inline", "worker"}:
             raise RuntimeError("TASK_EXECUTION_MODE must be 'inline' or 'worker'")
+        if self.task_lease_seconds < 30:
+            raise RuntimeError("TASK_LEASE_SECONDS must be at least 30")
         if self.environment.lower() in {"production", "prod"} and self.auto_create_schema:
             raise RuntimeError("AUTO_CREATE_SCHEMA=true is forbidden in production; run Alembic")
 
