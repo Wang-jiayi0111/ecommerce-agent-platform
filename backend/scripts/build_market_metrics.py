@@ -18,7 +18,7 @@ DEFAULT_DATASET_DIR = (
     Path(__file__).resolve().parents[1]
     / "data"
     / "market_intelligence"
-    / "amazon_us_portable_coffee_v1"
+    / "amazon_us_portable_blender_v1"
 )
 
 

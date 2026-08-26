@@ -71,7 +71,7 @@ def build_market_sample_metrics(
             ),
             evidence_refs=[],
             warnings=[
-                "No product sample was provided. Market and sample metrics are unavailable."
+                "未提供商品样本，市场指标和样本指标均不可用。"
             ],
             source_collection_run_ids=[],
         )
@@ -109,8 +109,7 @@ def build_market_sample_metrics(
         metrics=metrics,
         evidence_refs=used_evidence_refs,
         warnings=[
-            "Aggregate market data is unavailable. Returned metrics describe only "
-            "the supplied product sample."
+            "缺少全市场汇总数据，当前指标仅描述已提供的商品样本。"
         ],
         source_collection_run_ids=sorted({product.collection_run_id for product in products}),
     )
@@ -188,8 +187,8 @@ def _unavailable_full_market_metrics(
         ("product_concentration", "ratio"),
     )
     methodology = (
-        f"{AGGREGATE_MISSING_REASON}: the supplied product sample cannot establish "
-        f"a market-wide metric. methodology_version={METHODOLOGY_VERSION}."
+        f"{AGGREGATE_MISSING_REASON}：商品样本无法推导全市场指标。"
+        f"方法版本={METHODOLOGY_VERSION}。"
     )
     return [
         MarketMetric(
@@ -219,8 +218,8 @@ def _unavailable_sample_metrics(scope: AnalysisScope) -> list[MarketMetric]:
         ("sample_product_concentration", "ratio"),
     )
     methodology = (
-        "No product sample was supplied, so this sample metric is unavailable. "
-        f"methodology_version={METHODOLOGY_VERSION}."
+        "未提供商品样本，因此该样本指标不可用。"
+        f"方法版本={METHODOLOGY_VERSION}。"
     )
     return [
         MarketMetric(
@@ -249,8 +248,8 @@ def _sample_metrics(
             status=MetricStatus.AVAILABLE,
             scope=scope,
             methodology=(
-                "Number of distinct products in the supplied product sample. "
-                f"methodology_version={METHODOLOGY_VERSION}."
+                "统计商品样本中去重后的商品数量。"
+                f"方法版本={METHODOLOGY_VERSION}。"
             ),
             evidence_ids=evidence_ids,
             source_timestamp=source_timestamp,
@@ -277,9 +276,8 @@ def _price_metrics(
 
     if len(currencies) != 1:
         methodology = (
-            "PRICE_CURRENCY_CONFLICT: prices in different currencies were not merged. "
-            f"currencies={','.join(currencies)}; "
-            f"methodology_version={METHODOLOGY_VERSION}."
+            "PRICE_CURRENCY_CONFLICT：不同币种的价格未合并计算。"
+            f"币种={','.join(currencies)}；方法版本={METHODOLOGY_VERSION}。"
         )
         return [
             MarketMetric(
@@ -299,8 +297,8 @@ def _price_metrics(
     prices = sorted(product.price for product in products)
     median = _median(prices)
     common_methodology = (
-        "Calculated with Decimal from prices in the supplied product sample. "
-        f"methodology_version={METHODOLOGY_VERSION}."
+        "基于商品样本价格使用 Decimal 精确计算。"
+        f"方法版本={METHODOLOGY_VERSION}。"
     )
     distribution = {
         "observed_count": len(prices),
@@ -337,9 +335,8 @@ def _price_metrics(
             status=MetricStatus.AVAILABLE,
             scope=scope,
             methodology=(
-                "Median of the sorted Decimal sample prices; for an even sample, "
-                "the two middle prices are averaged. "
-                f"methodology_version={METHODOLOGY_VERSION}."
+                "对样本价格排序后计算中位数；样本数为偶数时取中间两项平均值。"
+                f"方法版本={METHODOLOGY_VERSION}。"
             ),
             evidence_ids=evidence_ids,
             source_timestamp=source_timestamp,
@@ -351,9 +348,9 @@ def _price_metrics(
             status=MetricStatus.AVAILABLE,
             scope=scope,
             methodology=(
-                "Four equal-width bins between the sample minimum and maximum; "
-                "the first three bins are upper-exclusive and the last is inclusive. "
-                f"methodology_version={METHODOLOGY_VERSION}."
+                "在样本最低价与最高价之间划分四个等宽区间；前三个区间不含上界，"
+                "最后一个区间包含上界。"
+                f"方法版本={METHODOLOGY_VERSION}。"
             ),
             evidence_ids=evidence_ids,
             source_timestamp=source_timestamp,
@@ -422,9 +419,8 @@ def _sales_display_distribution(
         status=MetricStatus.AVAILABLE,
         scope=scope,
         methodology=(
-            "Counts the original sales_display text by sales_value_type. No displayed "
-            "sales value is converted into an exact total. "
-            f"methodology_version={METHODOLOGY_VERSION}."
+            "按 sales_value_type 统计原始销量展示文本，不将展示值换算为精确销量。"
+            f"方法版本={METHODOLOGY_VERSION}。"
         ),
         evidence_ids=evidence_ids,
         source_timestamp=source_timestamp,
@@ -437,9 +433,8 @@ def _shop_concentration(
 ) -> MarketMetric:
     shops = [product.shop_name for product in products if product.shop_name]
     methodology = (
-        "Shop concentration uses product counts within the supplied sample. Shares use "
-        "products with a non-empty shop_name as denominator. "
-        f"methodology_version={METHODOLOGY_VERSION}."
+        "店铺集中度按样本内商品数量计算，占比以店铺名称有效的商品数为分母。"
+        f"方法版本={METHODOLOGY_VERSION}。"
     )
     if not shops:
         return MarketMetric(
@@ -499,9 +494,8 @@ def _product_concentration(
         if product.sales_value_type is SalesValueType.EXACT and product.sales_value is not None
     ]
     methodology = (
-        "Product concentration uses only exact sales_value records. lower_bound, range, "
-        "and unknown values are excluded from the total. "
-        f"methodology_version={METHODOLOGY_VERSION}."
+        "商品集中度仅使用精确销量记录计算，下限值、区间值和未知值不计入总量。"
+        f"方法版本={METHODOLOGY_VERSION}。"
     )
     total_exact_sales = sum((product.sales_value or 0) for product in exact_sales)
     if not exact_sales or total_exact_sales <= 0:

@@ -1,4 +1,6 @@
 from collections import Counter
+from collections.abc import Callable
+import logging
 from uuid import uuid4
 
 from pydantic import Field, ValidationError
@@ -29,8 +31,15 @@ from app.tools.support.contracts import (
     ToolRequest,
     ToolResponse,
 )
-from app.tools.support.review_analyzer import ReviewAnalyzer
+from app.tools.support.review_analyzer import (
+    ReviewAnalysisProgress,
+    ReviewAnalyzer,
+)
 from app.tools.support.llm_review_analyzer import LLMReviewAnalyzer
+
+
+logger = logging.getLogger(__name__)
+ProgressPublisher = Callable[[ToolRequest, str, str], None]
 
 
 class ReviewInsightToolParameters(
@@ -55,6 +64,7 @@ class ReviewInsightTool:
         repository: CollectionRepository,
         analyzer: ReviewAnalyzer,
         max_reviews_per_product: int = 50,
+        progress_publisher: ProgressPublisher | None = None,
     ) -> None:
         if max_reviews_per_product < 1:
             raise ValueError(
@@ -67,8 +77,25 @@ class ReviewInsightTool:
         self.max_reviews_per_product = (
             max_reviews_per_product
         )
+        self.progress_publisher = progress_publisher
 
     def execute(self, request: ToolRequest) -> ToolResponse:
+        try:
+            return self._execute(request)
+        except Exception:
+            self._log_unexpected_exception(
+                stage="execute",
+                request=request,
+                source=self.name,
+            )
+            return self._error_response(
+                request=request,
+                source=self.name,
+                code="REVIEW_ANALYSIS_FAILED",
+                message="Review insight processing failed unexpectedly.",
+            )
+
+    def _execute(self, request: ToolRequest) -> ToolResponse:
         identity_error = self._validate_tool_identity(request)
 
         if identity_error is not None:
@@ -178,6 +205,11 @@ class ReviewInsightTool:
                 error=exc,
             )
         except Exception:
+            self._log_unexpected_exception(
+                stage="collect_reviews",
+                request=request,
+                source=source,
+            )
             return self._error_response(
                 request=request,
                 source=source,
@@ -231,6 +263,11 @@ class ReviewInsightTool:
                 evidence_refs=evidence_refs,
             )
         except Exception:
+            self._log_unexpected_exception(
+                stage="persist_review_collection",
+                request=request,
+                source=source,
+            )
             return self._error_response(
                 request=request,
                 source=source,
@@ -246,12 +283,26 @@ class ReviewInsightTool:
         )
 
         try:
-            review_insight = self.analyzer.analyze(
-                reviews=reviews,
-                evidence_refs=evidence_refs,
-                sample_scope=sample_scope,
-            )
+            progress_callback = self._progress_callback(request)
+            if progress_callback is None:
+                review_insight = self.analyzer.analyze(
+                    reviews=reviews,
+                    evidence_refs=evidence_refs,
+                    sample_scope=sample_scope,
+                )
+            else:
+                review_insight = self.analyzer.analyze(
+                    reviews=reviews,
+                    evidence_refs=evidence_refs,
+                    sample_scope=sample_scope,
+                    progress_callback=progress_callback,
+                )
         except Exception:
+            self._log_unexpected_exception(
+                stage="analyze_reviews",
+                request=request,
+                source=source,
+            )
             return self._error_response(
                 request=request,
                 source=source,
@@ -286,6 +337,48 @@ class ReviewInsightTool:
                 "review_insight": review_insight.model_dump(mode="json"),
                 "evidence_refs": [evidence.model_dump(mode="json") for evidence in evidence_refs],
             },
+        )
+
+    def _progress_callback(
+        self,
+        request: ToolRequest,
+    ) -> Callable[[ReviewAnalysisProgress], None] | None:
+        if self.progress_publisher is None:
+            return None
+
+        def publish(progress: ReviewAnalysisProgress) -> None:
+            summary = (
+                f"Tool {self.name} completed LLM batch "
+                f"{progress.completed_batches}/{progress.total_batches}; "
+                f"analyzed {progress.analyzed_reviews}/"
+                f"{progress.selected_reviews} selected reviews "
+                f"from {progress.collected_reviews} collected reviews."
+            )
+            try:
+                self.progress_publisher(request, self.name, summary)
+            except Exception:
+                self._log_unexpected_exception(
+                    stage="publish_analysis_progress",
+                    request=request,
+                    source=self.name,
+                )
+
+        return publish
+
+    @staticmethod
+    def _log_unexpected_exception(
+        *,
+        stage: str,
+        request: ToolRequest,
+        source: str,
+    ) -> None:
+        logger.exception(
+            "ReviewInsightTool failed unexpectedly stage=%s task_id=%s "
+            "trace_id=%s source=%s",
+            stage,
+            request.task_id,
+            request.trace_id,
+            source,
         )
 
     def _get_adapter(

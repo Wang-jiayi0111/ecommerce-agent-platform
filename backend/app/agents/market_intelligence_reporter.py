@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal, Protocol
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from app.llm.contracts import LLMClientError, LLMMessage, StructuredLLMClient
 from app.modules.market_intelligence.schemas.analysis import EntryAssessment
-from app.modules.market_intelligence.schemas.common import MarketIntelligenceModel
+from app.modules.market_intelligence.schemas.common import (
+    MarketIntelligenceModel,
+    NonEmptyStr,
+)
 from app.modules.market_intelligence.schemas.report import Statement
 from app.prompts.market_intelligence import build_report_synthesis_prompt
 
@@ -14,20 +17,49 @@ if TYPE_CHECKING:
     from app.modules.market_intelligence.state import MarketIntelligenceState
 
 
+class EvidenceBoundStatement(Statement):
+    """A synthesized conclusion that must cite collected evidence."""
+
+    evidence_ids: list[NonEmptyStr] = Field(min_length=1)
+
+
 class ReportSynthesisOutput(MarketIntelligenceModel):
     schema_version: Literal["1.0"] = "1.0"
     entry_assessment: EntryAssessment
-    facts: list[Statement] = Field(default_factory=list)
-    inferences: list[Statement] = Field(default_factory=list)
-    opportunity_signals: list[Statement] = Field(default_factory=list)
-    risk_signals: list[Statement] = Field(default_factory=list)
+    facts: list[EvidenceBoundStatement] = Field(default_factory=list)
+    inferences: list[EvidenceBoundStatement] = Field(default_factory=list)
+    opportunity_signals: list[EvidenceBoundStatement] = Field(default_factory=list)
+    risk_signals: list[EvidenceBoundStatement] = Field(default_factory=list)
     suggested_actions: list[Statement] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_statement_ids(self) -> "ReportSynthesisOutput":
+        statements = [
+            *self.facts,
+            *self.inferences,
+            *self.opportunity_signals,
+            *self.risk_signals,
+            *self.suggested_actions,
+        ]
+        statement_ids = [item.statement_id for item in statements]
+        if len(statement_ids) != len(set(statement_ids)):
+            raise ValueError("Report synthesis statement_id values must be unique.")
+        return self
 
 
 class ReportSynthesisError(RuntimeError):
-    def __init__(self, message: str, *, retryable: bool) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str,
+        retryable: bool,
+        provider: str | None = None,
+    ) -> None:
         super().__init__(message)
+        self.code = code
         self.retryable = retryable
+        self.provider = provider
 
 
 class ReportSynthesizer(Protocol):
@@ -62,7 +94,11 @@ class LLMMarketIntelligenceReporter:
         except LLMClientError as exc:
             raise ReportSynthesisError(
                 str(exc),
-                retryable=exc.retryable,
+                code=exc.code,
+                retryable=(
+                    exc.retryable or exc.code == "LLM_SCHEMA_MISMATCH"
+                ),
+                provider=exc.provider,
             ) from exc
 
         self._validate_references(state, output)
@@ -139,5 +175,6 @@ class LLMMarketIntelligenceReporter:
         if used_evidence - allowed_evidence or used_limitations - allowed_limitations:
             raise ReportSynthesisError(
                 "Report synthesis contains references outside the supplied state.",
-                retryable=False,
+                code="REPORT_REFERENCE_INVALID",
+                retryable=True,
             )

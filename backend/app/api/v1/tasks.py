@@ -31,10 +31,10 @@ TaskPreviewServiceDependency = Annotated[
 def preview_task(
     payload: TaskPreviewRequest,
     service: TaskPreviewServiceDependency,
-    _: TaskCreateDependency,
+    principal: TaskCreateDependency,
 ) -> TaskPreviewResponse:
     try:
-        return service.preview(payload)
+        return service.preview(payload, principal)
     except TaskInputValidationError as error:
         raise HTTPException(
             status_code=422,

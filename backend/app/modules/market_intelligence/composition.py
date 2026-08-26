@@ -15,6 +15,9 @@ from app.graph.market_intelligence_graph import (
 )
 from app.llm.factory import build_structured_llm_client
 from app.modules.market_intelligence.dataset_availability import DatasetAvailability
+from app.modules.market_intelligence.data_source_availability import (
+    MarketDataSourceAvailability,
+)
 from app.modules.market_intelligence.input_extractor import (
     MarketIntelligenceInputExtractor,
 )
@@ -37,7 +40,7 @@ from app.services.market_intelligence_service import MarketIntelligenceService
 from app.tools.market_data import MarketDataTool
 from app.tools.product_search import ProductSearchTool
 from app.tools.profit_calculator import ProfitCalculatorTool
-from app.tools.review_insight import ReviewInsightTool
+from app.tools.review_insight import ProgressPublisher, ReviewInsightTool
 from app.tools.support.llm_review_analyzer import LLMReviewAnalyzer
 
 
@@ -56,9 +59,12 @@ def build_task_input_dispatcher(
     settings: Settings,
     dataset_registry: DatasetRegistry | None = None,
 ) -> TaskInputDispatcher:
+    datasets = dataset_registry or build_dataset_registry()
+    commerce_registry = build_commerce_adapter_registry(settings, datasets)
     extractor = build_market_intelligence_input_extractor(
         settings,
-        dataset_registry,
+        datasets,
+        commerce_registry,
     )
     return TaskInputDispatcher({"market_entry": extractor})
 
@@ -66,6 +72,7 @@ def build_task_input_dispatcher(
 def build_market_intelligence_input_extractor(
     settings: Settings,
     dataset_registry: DatasetRegistry | None = None,
+    commerce_registry: CommerceAdapterRegistry | None = None,
 ) -> MarketIntelligenceInputExtractor:
     llm_settings = (
         settings.llm_provider,
@@ -74,9 +81,12 @@ def build_market_intelligence_input_extractor(
         settings.llm_model,
     )
     llm_client = build_structured_llm_client(settings) if all(llm_settings) else None
+    datasets = dataset_registry or build_dataset_registry()
+    adapters = commerce_registry or build_commerce_adapter_registry(settings, datasets)
     return MarketIntelligenceInputExtractor(
-        availability=DatasetAvailability(dataset_registry or build_dataset_registry()),
+        availability=DatasetAvailability(datasets),
         llm_client=llm_client,
+        data_sources=MarketDataSourceAvailability(adapters),
     )
 
 
@@ -90,6 +100,7 @@ def build_commerce_adapter_registry(
         "test",
         "demo",
         "local",
+        "docker",
     }:
         fixed_dataset_registry = dataset_registry or build_dataset_registry()
         amazon_dataset_adapter = DatasetAdapter(
@@ -130,12 +141,14 @@ def build_review_insight_tool(
     registry: CommerceAdapterRegistry,
     repository: CollectionRepository,
     settings: Settings,
+    progress_publisher: ProgressPublisher | None = None,
 ) -> ReviewInsightTool:
     llm_client = build_structured_llm_client(settings)
 
     review_analyzer = LLMReviewAnalyzer(
         client=llm_client,
         batch_size=settings.review_llm_batch_size,
+        max_reviews=settings.review_llm_max_reviews,
         max_content_chars=settings.review_llm_max_content_chars,
         output_language=settings.review_llm_output_language,
     )
@@ -145,6 +158,7 @@ def build_review_insight_tool(
         repository=repository,
         analyzer=review_analyzer,
         max_reviews_per_product=settings.market_max_reviews_per_product,
+        progress_publisher=progress_publisher,
     )
 
 def build_market_data_tool(
@@ -180,7 +194,14 @@ def build_market_intelligence_graph(
             registry, repository, settings
         ),
         review_insight_tool=build_review_insight_tool(
-            registry, repository, settings
+            registry,
+            repository,
+            settings,
+            progress_publisher=(
+                getattr(tool_execution_port, "progress", None)
+                if tool_execution_port is not None
+                else None
+            ),
         ),
         profit_calculator_tool=build_profit_calculator_tool(),
         report_synthesizer=LLMMarketIntelligenceReporter(
@@ -191,7 +212,11 @@ def build_market_intelligence_graph(
         report_persistence_port=report_persistence_port,
         tool_execution_port=tool_execution_port,
         step_execution_port=step_execution_port,
-        max_retries=2,
+        max_retries=settings.llm_max_retries,
+        heartbeat_interval_seconds=max(
+            5,
+            min(30, settings.task_lease_seconds / 3),
+        ),
     )
 
 
@@ -250,6 +275,7 @@ def build_market_intelligence_components(
         input_extractor=build_market_intelligence_input_extractor(
             settings,
             dataset_registry,
+            commerce_registry,
         ),
         executor=MarketIntelligenceTaskExecutor(service),
     )

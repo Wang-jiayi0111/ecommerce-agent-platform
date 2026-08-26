@@ -53,6 +53,7 @@ class TaskEventType(StrEnum):
     NODE_COMPLETED = "node.completed"
     NODE_RETRYING = "node.retrying"
     TOOL_STARTED = "tool.started"
+    TOOL_PROGRESS = "tool.progress"
     TOOL_COMPLETED = "tool.completed"
     TOOL_FAILED = "tool.failed"
     APPROVAL_APPROVED = "approval.approved"
@@ -73,6 +74,18 @@ class DatasetMatch(FrozenContract):
     canonical_keyword: str = Field(min_length=1)
     matched_aliases: list[str] = Field(default_factory=list)
     reason_code: str | None = None
+
+
+class DataSourceOption(FrozenContract):
+    platform: str = Field(min_length=1)
+    market: str = Field(min_length=1)
+    data_source_mode: Literal["fixed_dataset", "official_api"]
+    label: str = Field(min_length=1)
+    available: bool
+    supports_products: bool = False
+    supports_reviews: bool = False
+    supports_market_metrics: bool = False
+    unavailable_reason: str | None = None
 
 
 class PreviewWarning(FrozenContract):
@@ -96,6 +109,7 @@ class TaskPreviewResponse(FrozenContract):
     missing_fields: list[str] = Field(default_factory=list)
     ambiguities: list[str] = Field(default_factory=list)
     dataset_matches: list[DatasetMatch] = Field(default_factory=list)
+    data_source_options: list[DataSourceOption] = Field(default_factory=list)
     warnings: list[PreviewWarning] = Field(default_factory=list)
 
 

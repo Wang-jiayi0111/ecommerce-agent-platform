@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
+from threading import Event, Thread
+from time import monotonic
 from typing import Any, Protocol, cast
 from uuid import uuid4
 
@@ -55,6 +58,16 @@ from app.tools.review_insight import ReviewInsightTool
 from app.tools.support.contracts import ToolError, ToolRequest, ToolResponse
 
 
+logger = logging.getLogger(__name__)
+METRIC_STATUS_LABELS = {
+    MetricStatus.AVAILABLE: "可用",
+    MetricStatus.UNAVAILABLE: "不可用",
+    MetricStatus.PARTIAL: "部分可用",
+    MetricStatus.STALE: "数据过期",
+    MetricStatus.CONFLICT: "数据冲突",
+}
+
+
 class CancellationPort(Protocol):
     def is_cancelled(self, task_id: str) -> bool: ...
 
@@ -81,6 +94,13 @@ class ToolExecutionPort(Protocol):
     def start(self, request: ToolRequest, tool_name: str) -> None: ...
 
     def finish(self, request: ToolRequest, response: ToolResponse) -> None: ...
+
+    def progress(
+        self,
+        request: ToolRequest,
+        tool_name: str,
+        summary: str,
+    ) -> None: ...
 
 
 class StepExecutionPort(Protocol):
@@ -128,6 +148,55 @@ class NoopToolExecutionPort:
     def finish(self, request: ToolRequest, response: ToolResponse) -> None:
         return None
 
+    def progress(
+        self,
+        request: ToolRequest,
+        tool_name: str,
+        summary: str,
+    ) -> None:
+        return None
+
+
+class _PeriodicLeaseHeartbeat:
+    """Renews a worker lease while a synchronous graph node is running."""
+
+    def __init__(
+        self,
+        *,
+        task_id: str,
+        heartbeat: Callable[[str], None],
+        interval_seconds: float,
+    ) -> None:
+        self.task_id = task_id
+        self.heartbeat = heartbeat
+        self.interval_seconds = interval_seconds
+        self._stop = Event()
+        self._thread: Thread | None = None
+
+    def __enter__(self) -> "_PeriodicLeaseHeartbeat":
+        self._thread = Thread(
+            target=self._run,
+            name=f"lease-heartbeat-{self.task_id}",
+            daemon=True,
+        )
+        self._thread.start()
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1)
+
+    def _run(self) -> None:
+        while not self._stop.wait(self.interval_seconds):
+            try:
+                self.heartbeat(self.task_id)
+            except Exception:
+                logger.exception(
+                    "Task lease heartbeat failed task_id=%s",
+                    self.task_id,
+                )
+
 
 class NoopStepExecutionPort:
     def start(self, state: MarketIntelligenceState, step: GraphStep) -> str | None:
@@ -154,9 +223,12 @@ class MarketIntelligenceGraph:
         tool_execution_port: ToolExecutionPort | None = None,
         step_execution_port: StepExecutionPort | None = None,
         max_retries: int = 2,
+        heartbeat_interval_seconds: float = 30,
     ) -> None:
         if max_retries < 0:
             raise ValueError("max_retries must not be negative")
+        if heartbeat_interval_seconds <= 0:
+            raise ValueError("heartbeat_interval_seconds must be positive")
         self.product_search_tool = product_search_tool
         self.market_data_tool = market_data_tool
         self.review_insight_tool = review_insight_tool
@@ -170,6 +242,7 @@ class MarketIntelligenceGraph:
         self.tool_execution_port = tool_execution_port or NoopToolExecutionPort()
         self.step_execution_port = step_execution_port or NoopStepExecutionPort()
         self.max_retries = max_retries
+        self.heartbeat_interval_seconds = heartbeat_interval_seconds
         self.graph = self._build_graph()
 
     def run(self, state: MarketIntelligenceState) -> MarketIntelligenceState:
@@ -257,7 +330,12 @@ class MarketIntelligenceGraph:
                     }
                 else:
                     try:
-                        update = handler(state)
+                        with _PeriodicLeaseHeartbeat(
+                            task_id=state["context"].task_id,
+                            heartbeat=heartbeat,
+                            interval_seconds=self.heartbeat_interval_seconds,
+                        ):
+                            update = handler(state)
                     except (KeyError, TypeError, ValueError, ValidationError) as exc:
                         update = {
                             "error": GraphError(
@@ -348,7 +426,7 @@ class MarketIntelligenceGraph:
                         "competitor_matrix",
                         LimitationStatus.PARTIAL,
                         "PRODUCT_COLLECTION_PARTIAL",
-                        "Only part of the requested product sample was collected.",
+                        "仅采集到部分请求的商品样本。",
                         [item.evidence_id for item in evidence],
                     )
                 ],
@@ -443,7 +521,8 @@ class MarketIntelligenceGraph:
                         f"market_snapshot.{metric.metric_code}",
                         LimitationStatus(metric.status.value),
                         metric.reason_code or "MARKET_METRIC_INCOMPLETE",
-                        f"Market metric {metric.metric_code} is {metric.status.value}.",
+                        f"市场指标 {metric.metric_code} 当前状态为"
+                        f"{METRIC_STATUS_LABELS[metric.status]}。",
                         metric.evidence_ids,
                     )
                     for metric in missing
@@ -504,7 +583,7 @@ class MarketIntelligenceGraph:
                             "review_insights",
                             LimitationStatus(insight.status.value),
                             "REVIEW_DATA_INCOMPLETE",
-                            f"Review insight is {insight.status.value}.",
+                            f"评论洞察当前状态为{METRIC_STATUS_LABELS[insight.status]}。",
                             insight.evidence_ids,
                         )
                     ],
@@ -534,7 +613,7 @@ class MarketIntelligenceGraph:
                 "profit-inputs",
                 "profit_analysis",
                 "COST_INPUT_UNAVAILABLE",
-                "Complete profit inputs were not provided.",
+                "未提供完整的利润测算参数。",
             )
             return {
                 "profit_result": response,
@@ -595,18 +674,44 @@ class MarketIntelligenceGraph:
         flags = list(state["degraded_flags"])
         retries = 0
         while True:
+            started_at = monotonic()
             try:
                 synthesis = self.report_synthesizer.synthesize(state)
                 break
             except ReportSynthesisError as exc:
-                if exc.retryable and retries < self.max_retries:
+                elapsed_ms = (monotonic() - started_at) * 1000
+                will_retry = exc.retryable and retries < self.max_retries
+                logger.warning(
+                    "Report synthesis failed task_id=%s trace_id=%s "
+                    "error_code=%s provider=%s retryable=%s attempt=%s "
+                    "max_attempts=%s elapsed_ms=%.2f will_retry=%s message=%s",
+                    state["context"].task_id,
+                    state["context"].trace_id,
+                    exc.code,
+                    exc.provider or "unknown",
+                    exc.retryable,
+                    retries + 1,
+                    self.max_retries + 1,
+                    elapsed_ms,
+                    will_retry,
+                    str(exc),
+                )
+                if will_retry:
                     retries += 1
                     continue
+                logger.warning(
+                    "Report synthesis degraded task_id=%s trace_id=%s "
+                    "error_code=%s attempts=%s",
+                    state["context"].task_id,
+                    state["context"].trace_id,
+                    exc.code,
+                    retries + 1,
+                )
                 limitation = self._unavailable(
                     "report-synthesis",
                     "entry_assessment",
                     "LLM_UNAVAILABLE",
-                    "The report synthesis service is unavailable.",
+                    "报告合成服务当前不可用，已保留现有结构化分析结果。",
                 )
                 limitations = self._merge_limitations(limitations, [limitation])
                 flags = self._merge_strings(flags, ["LLM_UNAVAILABLE"])
@@ -679,7 +784,7 @@ class MarketIntelligenceGraph:
         if critical and report.entry_assessment.decision is not EntryDecision.INSUFFICIENT_DATA:
             assessment = EntryAssessment(
                 decision=EntryDecision.INSUFFICIENT_DATA,
-                summary="Critical data limitations prevent a reliable market entry decision.",
+                summary="关键数据存在限制，当前无法形成可靠的市场进入判断。",
                 evidence_ids=report.entry_assessment.evidence_ids,
                 limitation_ids=[item.limitation_id for item in critical],
             )
@@ -738,6 +843,14 @@ class MarketIntelligenceGraph:
             try:
                 response = tool.execute(request)
             except Exception:
+                logger.exception(
+                    "Tool execution escaped its boundary tool=%s task_id=%s "
+                    "trace_id=%s step=%s",
+                    getattr(tool, "name", step.value),
+                    state["context"].task_id,
+                    state["context"].trace_id,
+                    step.value,
+                )
                 response = ToolResponse(
                     success=False,
                     error=ToolError(

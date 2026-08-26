@@ -1,3 +1,4 @@
+import logging
 from uuid import uuid4
 
 from pydantic import Field, ValidationError
@@ -18,6 +19,9 @@ from app.tools.support.market_sample_metrics import (
     MarketSampleMetricsResult,
     build_market_sample_metrics,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class MarketDataToolParameters(MarketDataRequest):
@@ -48,6 +52,23 @@ class MarketDataTool:
         self.registry = registry
 
     def execute(self, tool_request: ToolRequest) -> ToolResponse:
+        try:
+            return self._execute(tool_request)
+        except Exception:
+            logger.exception(
+                "MarketDataTool failed unexpectedly stage=execute "
+                "task_id=%s trace_id=%s",
+                tool_request.task_id,
+                tool_request.trace_id,
+            )
+            return self._error_response(
+                request=tool_request,
+                code="MARKET_DATA_INTERNAL_ERROR",
+                message="Market data processing failed unexpectedly.",
+                source=self.name,
+            )
+
+    def _execute(self, tool_request: ToolRequest) -> ToolResponse:
         identity_error = self._validate_tool_identity(tool_request)
         if identity_error is not None:
             return self._error_response(
@@ -149,6 +170,13 @@ class MarketDataTool:
                 error=exc,
             )
         except Exception:
+            logger.exception(
+                "MarketDataTool failed unexpectedly stage=get_market_metrics "
+                "task_id=%s trace_id=%s source=%s",
+                tool_request.task_id,
+                tool_request.trace_id,
+                f"{platform}:{data_source_mode}",
+            )
             return self._error_response(
                 request=tool_request,
                 code="MARKET_DATA_INTERNAL_ERROR",

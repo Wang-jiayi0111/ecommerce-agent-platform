@@ -145,12 +145,20 @@ class BailianStructuredLLMClient:
             )
 
         try:
-            return response_model.model_validate_json(
-                self._normalize_json_content(content)
-            )
+            payload = self._decode_json_content(content)
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise LLMResponseError(
+                code="LLM_INVALID_JSON",
+                message="Bailian output does not contain a valid JSON object.",
+                provider=self.provider,
+                retryable=False,
+            ) from exc
+
+        try:
+            return response_model.model_validate(payload)
         except ValidationError as exc:
             raise LLMResponseError(
-                code="LLM_INVALID_RESPONSE",
+                code="LLM_SCHEMA_MISMATCH",
                 message="Bailian output does not match the requested schema.",
                 provider=self.provider,
                 retryable=False,
@@ -189,13 +197,40 @@ class BailianStructuredLLMClient:
         return result
 
     @staticmethod
-    def _normalize_json_content(content: str) -> str:
+    def _decode_json_content(content: str) -> dict[str, Any]:
         normalized = content.strip()
         if normalized.startswith("```") and normalized.endswith("```"):
             first_newline = normalized.find("\n")
             if first_newline != -1:
                 normalized = normalized[first_newline + 1 : -3].strip()
-        return normalized
+
+        try:
+            payload = json.loads(normalized)
+        except json.JSONDecodeError:
+            payload = BailianStructuredLLMClient._extract_json_object(normalized)
+
+        # Some compatible endpoints wrap structured output in a single result field.
+        if isinstance(payload, dict) and len(payload) == 1:
+            key = next(iter(payload))
+            if key in {"data", "result", "output", "response"}:
+                payload = payload[key]
+        if not isinstance(payload, dict):
+            raise ValueError("Structured response must be a JSON object.")
+        return payload
+
+    @staticmethod
+    def _extract_json_object(content: str) -> dict[str, Any]:
+        decoder = json.JSONDecoder()
+        for index, character in enumerate(content):
+            if character != "{":
+                continue
+            try:
+                payload, _ = decoder.raw_decode(content[index:])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                return payload
+        raise ValueError("No JSON object found in structured response.")
 
     def _provider_error(
         self,

@@ -998,7 +998,7 @@ class DatasetAdapter:
     ) -> EvidenceReference:
         product = mapped_record.product
         evidence_key = (
-            f"{manifest.dataset_id}:{manifest.dataset_version}:"
+            f"{run.id}:{manifest.dataset_id}:{manifest.dataset_version}:"
             f"{dataset_sha256}:{product.product_id}:{mapped_record.record_number}"
         )
         return EvidenceReference(
@@ -1041,7 +1041,7 @@ class DatasetAdapter:
         review = mapped_record.review
 
         evidence_key = (
-            f"{manifest.dataset_id}:{manifest.dataset_version}:"
+            f"{run.id}:{manifest.dataset_id}:{manifest.dataset_version}:"
             f"{dataset_sha256}:{review.review_id}:"
             f"{mapped_record.record_number}"
         )
@@ -1085,6 +1085,7 @@ class DatasetAdapter:
         dataset_sha256: str,
     ) -> EvidenceReference:
         evidence_key = (
+            f"{run.id}:"
             f"{manifest.dataset_id}:"
             f"{manifest.dataset_version}:"
             f"{dataset_sha256}:"

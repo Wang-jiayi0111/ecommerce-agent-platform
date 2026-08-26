@@ -16,15 +16,24 @@ from app.services.auth_service import AuthService
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
-        return json.dumps(
-            {
-                "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
-                "level": record.levelname,
-                "logger": record.name,
-                "message": record.getMessage(),
-            },
-            ensure_ascii=False,
-        )
+        payload = {
+            "timestamp": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info is not None:
+            exception_type, exception, _ = record.exc_info
+            payload.update(
+                {
+                    "exception_type": exception_type.__name__,
+                    "exception": str(exception),
+                    "traceback": self.formatException(record.exc_info),
+                }
+            )
+        if record.stack_info:
+            payload["stacktrace"] = self.formatStack(record.stack_info)
+        return json.dumps(payload, ensure_ascii=False)
 
 
 def configure_logging() -> None:

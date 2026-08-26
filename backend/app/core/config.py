@@ -60,6 +60,7 @@ class Settings:
     )
     llm_extra_body_json: str = getenv("LLM_EXTRA_BODY_JSON", "{}")
     review_llm_batch_size: int = int(getenv("REVIEW_LLM_BATCH_SIZE", "20"))
+    review_llm_max_reviews: int = int(getenv("REVIEW_LLM_MAX_REVIEWS", "60"))
     review_llm_max_content_chars: int = int(
         getenv("REVIEW_LLM_MAX_CONTENT_CHARS", "8000")
     )
@@ -129,6 +130,8 @@ class Settings:
             )
         if self.review_llm_batch_size < 1:
             raise RuntimeError("REVIEW_LLM_BATCH_SIZE must be positive")
+        if self.review_llm_max_reviews < 1:
+            raise RuntimeError("REVIEW_LLM_MAX_REVIEWS must be positive")
         if self.review_llm_max_content_chars < 1:
             raise RuntimeError("REVIEW_LLM_MAX_CONTENT_CHARS must be positive")
         if not self.review_llm_output_language.strip():

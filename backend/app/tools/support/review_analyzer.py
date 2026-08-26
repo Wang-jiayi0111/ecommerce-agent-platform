@@ -1,4 +1,6 @@
 from collections import Counter, defaultdict
+from collections.abc import Callable
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Protocol
 
@@ -20,6 +22,18 @@ from app.modules.market_intelligence.schemas.facts import (
 )
 
 
+@dataclass(frozen=True)
+class ReviewAnalysisProgress:
+    completed_batches: int
+    total_batches: int
+    analyzed_reviews: int
+    selected_reviews: int
+    collected_reviews: int
+
+
+ReviewProgressCallback = Callable[[ReviewAnalysisProgress], None]
+
+
 class ReviewAnalyzer(Protocol):
     def analyze(
         self,
@@ -27,6 +41,7 @@ class ReviewAnalyzer(Protocol):
         reviews: list[NormalizedReview],
         evidence_refs: list[EvidenceReference],
         sample_scope: AnalysisScope,
+        progress_callback: ReviewProgressCallback | None = None,
     ) -> ReviewInsight:
         ...
 
@@ -44,6 +59,7 @@ class PrecomputedReviewAnalyzer:
         reviews: list[NormalizedReview],
         evidence_refs: list[EvidenceReference],
         sample_scope: AnalysisScope,
+        progress_callback: ReviewProgressCallback | None = None,
     ) -> ReviewInsight:
         if not reviews:
             return ReviewInsight(
@@ -66,7 +82,7 @@ class PrecomputedReviewAnalyzer:
         evidence_ids = [evidence.evidence_id for evidence in evidence_refs]
         status = self._status(reviews)
 
-        return ReviewInsight(
+        insight = ReviewInsight(
             status=status,
             sample_scope=sample_scope,
             sentiment_distribution=sentiment_distribution,
@@ -78,6 +94,17 @@ class PrecomputedReviewAnalyzer:
             ),
             evidence_ids=evidence_ids,
         )
+        if progress_callback is not None:
+            progress_callback(
+                ReviewAnalysisProgress(
+                    completed_batches=1,
+                    total_batches=1,
+                    analyzed_reviews=len(reviews),
+                    selected_reviews=len(reviews),
+                    collected_reviews=len(reviews),
+                )
+            )
+        return insight
 
     @staticmethod
     def _sentiment_distribution(
@@ -158,9 +185,8 @@ class PrecomputedReviewAnalyzer:
                         / Decimal(total_reviews)
                     ),
                     summary=(
-                        f"{theme} appears in "
-                        f"{mention_count} of "
-                        f"{total_reviews} reviews."
+                        f"“{theme}”在 {total_reviews} 条评论中出现 "
+                        f"{mention_count} 次。"
                     ),
                     representative_review_ids=(
                         representative_review_ids

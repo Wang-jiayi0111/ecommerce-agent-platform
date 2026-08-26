@@ -43,6 +43,12 @@
 | 18 | [未来主图接入](18-future-root-graph-integration.md) | 未来主图接入契约 |
 | 19 | [开发顺序](19-development-order.md) | 实际开发顺序和阶段交付物 |
 
+后续接入平台官方 API 时，先完成以下三份接入基线：
+
+- [授权与能力确认](integrations/01-authorization-and-capabilities.md)
+- [官方接口清单](integrations/02-official-api-inventory.md)
+- [字段映射与数据口径](integrations/03-field-mapping-and-data-semantics.md)
+
 ## 4. 需求、设计和实现状态怎么区分
 
 每篇文档使用三种说明：

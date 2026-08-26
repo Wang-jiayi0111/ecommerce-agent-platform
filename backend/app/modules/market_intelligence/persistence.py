@@ -257,6 +257,21 @@ class SQLAlchemyToolExecutionPort:
                 step=request.step_name,
             )
 
+    def progress(
+        self,
+        request: ToolRequest,
+        tool_name: str,
+        summary: str,
+    ) -> None:
+        if request.task_id is None:
+            return
+        self.event_publisher.publish(
+            request.task_id,
+            TaskEventType.TOOL_PROGRESS,
+            summary,
+            step=request.step_name,
+        )
+
 
 class SQLAlchemyStepExecutionPort:
     def __init__(

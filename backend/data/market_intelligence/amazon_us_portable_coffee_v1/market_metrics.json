@@ -109,17 +109,10 @@
   },
   {
     "metric_code": "sample_brand_concentration",
-    "value": {
-      "total_product_count": 21,
-      "branded_product_count": 0,
-      "brand_coverage_ratio": "0.0000",
-      "distinct_brand_count": 0,
-      "top1_share": "0.0000",
-      "top3_share": "0.0000",
-      "top_brands": []
-    },
+    "value": null,
     "unit": "ratio",
     "status": "unavailable",
+    "reason_code": "BRAND_DATA_UNAVAILABLE",
     "methodology": "Brand concentration calculated only from products with a non-empty brand field; store/shop_name is never used as a brand fallback. Shares use the branded subset as denominator. The metric is partial when brand coverage is below 80%.",
     "source_timestamp": null
   }

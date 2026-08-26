@@ -5,6 +5,7 @@ from app.graph.operations_graph import EcommerceOperationsGraph
 from app.modules.market_intelligence.composition import (
     build_market_intelligence_components,
 )
+from app.modules.market_intelligence.overview import MarketOverviewService
 from app.modules.task_center import (
     LegacyOperationsTaskExecutor,
     TaskExecutorDispatcher,
@@ -19,6 +20,7 @@ class ApplicationContainer:
     task_service: TaskService
     task_preview_service: TaskPreviewService
     dashboard_service: DashboardService
+    market_overview_service: MarketOverviewService
 
 
 def build_application_container(
@@ -28,6 +30,7 @@ def build_application_container(
     """汇总各 Agent 模块，保持任务系统与具体 Graph 解耦。"""
 
     market = build_market_intelligence_components(settings, session_factory)
+    task_repository = SQLAlchemyTaskRepository(session_factory)
     input_dispatcher = TaskInputDispatcher(
         {"market_entry": market.input_extractor}
     )
@@ -42,7 +45,7 @@ def build_application_container(
         }
     )
     task_service = TaskService(
-        repository=SQLAlchemyTaskRepository(session_factory),
+        repository=task_repository,
         input_dispatcher=input_dispatcher,
         executor_dispatcher=executor_dispatcher,
     )
@@ -50,6 +53,10 @@ def build_application_container(
         task_service=task_service,
         task_preview_service=TaskPreviewService(input_dispatcher),
         dashboard_service=DashboardService(),
+        market_overview_service=MarketOverviewService(
+            market.dataset_registry,
+            task_repository,
+        ),
     )
 
 

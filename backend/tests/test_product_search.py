@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.adapters.commerce.commerce_adapter_base import AdapterResult
+from app.adapters.commerce.commerce_adapter_base import AdapterContext, AdapterResult
 from app.db.models import (
     Base,
     CollectionRunRecord,
@@ -29,6 +29,7 @@ from app.modules.market_intelligence.schemas import (
     DataSourceMode,
     EvidenceReference,
     NormalizedProduct,
+    ProductSearchRequest,
 )
 from app.tools import ToolRequest
 from app.tools.product_search import ProductSearchTool
@@ -222,6 +223,49 @@ def test_product_search_with_real_amazon_dataset(
                 product.title,
                 product.price,
             )
+
+
+def test_fixed_dataset_evidence_ids_are_scoped_to_collection_run() -> None:
+    backend_root = Path(__file__).resolve().parents[1]
+    dataset_root = backend_root / "data" / "market_intelligence"
+    dataset_dir = dataset_root / "amazon_us_portable_coffee_v1"
+    manifest = json.loads(
+        (dataset_dir / "manifest.json").read_text(encoding="utf-8")
+    )
+    adapter = DatasetAdapter(
+        platform=manifest["platform"],
+        dataset_root=dataset_root,
+        public_dataset_ids={manifest["dataset_id"]},
+    )
+    request = ProductSearchRequest(
+        platform=manifest["platform"],
+        market=manifest["market"],
+        category=manifest["category"],
+        keyword=manifest["keyword"],
+        product_limit=2,
+        sort_by="default",
+    )
+
+    results = [
+        adapter.search_products(
+            request,
+            AdapterContext(
+                tenant_id="tenant-001",
+                user_id="user-001",
+                trace_id=f"trace-{index}",
+                task_id=f"task-{index}",
+                tool_call_id=f"tool-call-{index}",
+            ),
+        )
+        for index in (1, 2)
+    ]
+
+    assert results[0].run.id != results[1].run.id
+    assert {
+        evidence.evidence_id for evidence in results[0].evidence_refs
+    }.isdisjoint(
+        evidence.evidence_id for evidence in results[1].evidence_refs
+    )
 
 
 def test_product_search_persists_result_to_database(

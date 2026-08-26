@@ -21,7 +21,8 @@ def build_structured_llm_client(settings: Settings) -> StructuredLLMClient:
         top_p=settings.llm_top_p,
         max_tokens=settings.llm_max_tokens,
         timeout_seconds=settings.llm_timeout_seconds,
-        max_retries=settings.llm_max_retries,
+        # Graph owns retries so each failed request produces one observable attempt.
+        max_retries=0,
         structured_output_mode=settings.llm_structured_output_mode,
         extra_body=_parse_extra_body(settings.llm_extra_body_json),
     )

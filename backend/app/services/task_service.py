@@ -1,3 +1,4 @@
+from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -41,11 +42,11 @@ class TaskService:
         self.lease_seconds = lease_seconds or settings.task_lease_seconds
 
     def create(self, payload: TaskCreate, principal: Principal) -> AgentTask:
-        if self.input_dispatcher is not None:
-            self.input_dispatcher.validate_task(payload)
         trusted_payload = payload.model_copy(
             update={"tenant_id": principal.tenant_id, "user_id": principal.user_id}
         )
+        if self.input_dispatcher is not None:
+            self.input_dispatcher.validate_task(trusted_payload)
         task = AgentTask(request=trusted_payload)
         self.repository.add(task)
         if self.execution_mode == "inline":

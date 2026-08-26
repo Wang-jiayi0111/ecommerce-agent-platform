@@ -1,5 +1,6 @@
 from typing import Protocol
 
+from app.core.security import Principal
 from app.domain import TaskCreate, TaskError, TaskPreviewRequest, TaskPreviewResponse
 
 
@@ -10,7 +11,11 @@ class TaskInputValidationError(ValueError):
 
 
 class TaskInputExtractor(Protocol):
-    def preview(self, payload: TaskPreviewRequest) -> TaskPreviewResponse: ...
+    def preview(
+        self,
+        payload: TaskPreviewRequest,
+        principal: Principal | None = None,
+    ) -> TaskPreviewResponse: ...
 
     def validate_task(self, payload: TaskCreate) -> None: ...
 
@@ -21,7 +26,11 @@ class TaskInputDispatcher:
     def __init__(self, extractors: dict[str, TaskInputExtractor]) -> None:
         self.extractors = dict(extractors)
 
-    def preview(self, payload: TaskPreviewRequest) -> TaskPreviewResponse:
+    def preview(
+        self,
+        payload: TaskPreviewRequest,
+        principal: Principal | None = None,
+    ) -> TaskPreviewResponse:
         extractor = self.extractors.get(payload.intent)
         if extractor is None:
             raise TaskInputValidationError(
@@ -32,7 +41,9 @@ class TaskInputDispatcher:
                     details={"intent": payload.intent},
                 )
             )
-        return extractor.preview(payload)
+        if principal is None:
+            return extractor.preview(payload)
+        return extractor.preview(payload, principal)
 
     def validate_task(self, payload: TaskCreate) -> None:
         extractor = self.extractors.get(payload.intent)

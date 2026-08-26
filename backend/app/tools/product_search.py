@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated, Any
 from uuid import uuid4
 
@@ -21,6 +22,9 @@ from app.modules.market_intelligence.schemas import (
     ProductSearchRequest,
 )
 from app.tools.support.contracts import ToolError, ToolRequest, ToolResponse
+
+
+logger = logging.getLogger(__name__)
 
 
 NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -215,6 +219,12 @@ class ProductSearchTool:
                 evidence_refs=evidence_refs,
             )
         except Exception:
+            logger.exception(
+                "Product search persistence failed task_id=%s trace_id=%s run_id=%s",
+                parameters.task_id,
+                request.trace_id,
+                run.id,
+            )
             return self._error_response(
                 request=request,
                 code="COLLECTION_INTERNAL_ERROR",

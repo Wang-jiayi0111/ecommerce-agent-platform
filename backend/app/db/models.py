@@ -4,10 +4,12 @@ from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import (
+    CheckConstraint,
     JSON,
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -145,6 +147,165 @@ class MarketIntelligenceReportRecord(TenantAuditRecord):
     status: Mapped[str] = mapped_column(String(32), index=True)
     report_hash: Mapped[str] = mapped_column(String(64), index=True)
     report_payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+class MarketMetricBatchRecord(TenantAuditRecord):
+    """一次宏观市场指标上传及其数据范围、来源和审核状态。"""
+
+    __tablename__ = "market_metric_batch"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "platform",
+            "market",
+            "category",
+            "keyword",
+            "period_start",
+            "period_end",
+            "source_name",
+            "data_version",
+            name="uq_market_metric_batch_scope_version",
+        ),
+        CheckConstraint(
+            "period_end >= period_start",
+            name="ck_market_metric_batch_period",
+        ),
+        CheckConstraint(
+            "status IN ('pending_review', 'approved', 'rejected', 'disabled')",
+            name="ck_market_metric_batch_status",
+        ),
+        Index(
+            "ix_market_metric_batch_scope_lookup",
+            "tenant_id",
+            "platform",
+            "market",
+            "category",
+            "status",
+            "period_end",
+        ),
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    platform: Mapped[str] = mapped_column(String(32), index=True)
+    market: Mapped[str] = mapped_column(String(32), index=True)
+    category: Mapped[str] = mapped_column(String(255), index=True)
+    keyword: Mapped[str] = mapped_column(String(255), index=True)
+    period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    source_name: Mapped[str] = mapped_column(String(255))
+    source_type: Mapped[str] = mapped_column(String(32), index=True)
+    source_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    methodology: Mapped[str] = mapped_column(Text)
+    license_or_authorization: Mapped[str] = mapped_column(Text)
+    data_version: Mapped[str] = mapped_column(String(64))
+    original_file_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    original_file_sha256: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(32), default="pending_review", index=True
+    )
+    uploaded_by: Mapped[str] = mapped_column(String(64), index=True)
+    reviewed_by: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class MarketMetricObservationRecord(TenantAuditRecord):
+    """上传批次中的一条宏观市场指标观测值。"""
+
+    __tablename__ = "market_metric_observation"
+    __table_args__ = (
+        UniqueConstraint(
+            "batch_id",
+            "metric_code",
+            name="uq_market_metric_observation_batch_code",
+        ),
+        CheckConstraint(
+            "status IN ('available', 'unavailable', 'partial', 'stale', 'conflict')",
+            name="ck_market_metric_observation_status",
+        ),
+        CheckConstraint(
+            "value_kind IN ('direct', 'derived')",
+            name="ck_market_metric_observation_value_kind",
+        ),
+        CheckConstraint(
+            "(value_kind = 'direct' AND formula_code IS NULL AND formula_version IS NULL "
+            "AND calculated_at IS NULL) OR "
+            "(value_kind = 'derived' AND formula_code IS NOT NULL "
+            "AND formula_version IS NOT NULL AND calculated_at IS NOT NULL)",
+            name="ck_market_metric_observation_derivation",
+        ),
+        CheckConstraint(
+            "comparison_period_end IS NULL OR comparison_period_start IS NOT NULL",
+            name="ck_market_metric_observation_comparison_start",
+        ),
+        CheckConstraint(
+            "comparison_period_start IS NULL OR comparison_period_end IS NOT NULL",
+            name="ck_market_metric_observation_comparison_end",
+        ),
+        CheckConstraint(
+            "comparison_period_end IS NULL OR comparison_period_end >= comparison_period_start",
+            name="ck_market_metric_observation_comparison_period",
+        ),
+        Index(
+            "ix_market_metric_observation_lookup",
+            "tenant_id",
+            "metric_code",
+            "status",
+            "source_timestamp",
+        ),
+    )
+
+    batch_id: Mapped[str] = mapped_column(
+        ForeignKey("market_metric_batch.id", ondelete="CASCADE"), index=True
+    )
+    metric_code: Mapped[str] = mapped_column(String(64), index=True)
+    value_kind: Mapped[str] = mapped_column(String(16), index=True)
+    value: Mapped[Decimal | None] = mapped_column(
+        Numeric(28, 6), nullable=True
+    )
+    unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(32), default="available", index=True
+    )
+    reason_code: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    methodology: Mapped[str] = mapped_column(Text)
+    source_timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    growth_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    comparison_period_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    comparison_period_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    formula_code: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    formula_version: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
+    source_observation_ids: Mapped[list[str]] = mapped_column(
+        JSON, default=list
+    )
+    calculated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
 
 class CollectionRunRecord(TenantAuditRecord):
     __tablename__ = "collection_run"

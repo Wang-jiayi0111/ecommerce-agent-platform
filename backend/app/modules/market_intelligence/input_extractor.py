@@ -1,9 +1,13 @@
+import logging
 import re
 from decimal import Decimal
 
 from pydantic import ConfigDict, Field, ValidationError
 
+from app.core.security import Principal
 from app.domain import (
+    DataSourceOption,
+    DatasetMatch,
     PreviewWarning,
     PreviewWarningSeverity,
     TaskCreate,
@@ -13,6 +17,9 @@ from app.domain import (
 )
 from app.llm import LLMClientError, LLMMessage, StructuredLLMClient
 from app.modules.market_intelligence.dataset_availability import DatasetAvailability
+from app.modules.market_intelligence.data_source_availability import (
+    MarketDataSourceAvailability,
+)
 from app.modules.market_intelligence.schemas import (
     DataSourceMode,
     MarketIntelligenceBusinessContext,
@@ -24,6 +31,9 @@ from app.modules.market_intelligence.schemas.common import MarketIntelligenceMod
 from app.modules.market_intelligence.schemas.request import CollectionOptions
 from app.modules.task_center.input_dispatcher import TaskInputValidationError
 from app.prompts.market_intelligence import build_input_extraction_prompt
+
+
+logger = logging.getLogger(__name__)
 
 
 class MarketInputExtraction(MarketIntelligenceModel):
@@ -54,11 +64,17 @@ class MarketIntelligenceInputExtractor:
         self,
         availability: DatasetAvailability,
         llm_client: StructuredLLMClient | None = None,
+        data_sources: MarketDataSourceAvailability | None = None,
     ) -> None:
         self.availability = availability
         self.llm_client = llm_client
+        self.data_sources = data_sources
 
-    def preview(self, payload: TaskPreviewRequest) -> TaskPreviewResponse:
+    def preview(
+        self,
+        payload: TaskPreviewRequest,
+        principal: Principal | None = None,
+    ) -> TaskPreviewResponse:
         draft, warnings = self._extract(payload.user_query)
         canonical = self.availability.canonicalize_product(
             payload.user_query,
@@ -98,6 +114,7 @@ class MarketIntelligenceInputExtractor:
         ]
         normalized_input = None
         dataset_matches = []
+        data_source_options: list[DataSourceOption] = []
         if not missing_fields:
             profit_constraints = self._profit_constraints(draft, warnings)
             normalized_input = MarketIntelligenceRequest(
@@ -117,11 +134,16 @@ class MarketIntelligenceInputExtractor:
                 normalized_input,
                 user_query=payload.user_query,
             )
-            if not any(match.supported for match in dataset_matches):
+            data_source_options = self._data_source_options(
+                normalized_input,
+                dataset_matches,
+                principal.tenant_id if principal else None,
+            )
+            if not any(option.available for option in data_source_options):
                 warnings.append(
                     PreviewWarning(
-                        code="DATASET_NOT_AVAILABLE",
-                        message="当前固定数据集不支持该商品、平台或市场。",
+                        code="DATA_SOURCE_NOT_AVAILABLE",
+                        message="当前商品、市场和平台没有可用的数据来源。",
                         field="normalized_input",
                     )
                 )
@@ -131,8 +153,12 @@ class MarketIntelligenceInputExtractor:
             confidence=confidence,
             normalized_input=normalized_input,
             missing_fields=missing_fields,
-            ambiguities=draft.ambiguities,
+            ambiguities=self._reconcile_ambiguities(
+                draft.ambiguities,
+                keyword=keyword,
+            ),
             dataset_matches=dataset_matches,
+            data_source_options=data_source_options,
             warnings=warnings,
         )
 
@@ -154,15 +180,28 @@ class MarketIntelligenceInputExtractor:
             ) from exc
 
         request = context.market_intelligence_request
-        if request.data_source_mode is not DataSourceMode.FIXED_DATASET:
+        if request.data_source_mode is DataSourceMode.OFFICIAL_API:
+            if self.data_sources is not None and self.data_sources.is_supported(
+                request,
+                payload.tenant_id,
+            ):
+                return
             raise TaskInputValidationError(
                 TaskError(
-                    code="DATA_SOURCE_MODE_NOT_SUPPORTED",
-                    message="当前市场机会功能只支持 fixed_dataset。",
+                    code="UNSUPPORTED_DATA_SOURCE",
+                    message="所选官方平台 API 尚未接入或当前账号未授权。",
                     step="validate_input",
+                    details={
+                        "platform": request.platforms[0],
+                        "market": request.market,
+                        "data_source_mode": request.data_source_mode.value,
+                    },
                 )
             )
-        if not self.availability.is_supported(request):
+        adapter_available = (
+            self.data_sources is None or self.data_sources.is_supported(request)
+        )
+        if not adapter_available or not self.availability.is_supported(request):
             raise TaskInputValidationError(
                 TaskError(
                     code="DATASET_NOT_AVAILABLE",
@@ -176,6 +215,62 @@ class MarketIntelligenceInputExtractor:
                     },
                 )
             )
+
+    def _data_source_options(
+        self,
+        request: MarketIntelligenceRequest,
+        dataset_matches: list[DatasetMatch],
+        tenant_id: str | None,
+    ) -> list[DataSourceOption]:
+        if self.data_sources is not None:
+            return self.data_sources.options(request, dataset_matches, tenant_id)
+        supported = any(item.supported for item in dataset_matches)
+        platform = request.platforms[0]
+        return [
+            DataSourceOption(
+                platform=platform,
+                market=request.market,
+                data_source_mode=DataSourceMode.FIXED_DATASET.value,
+                label=f"{platform} {request.market} · 固定数据集",
+                available=supported,
+                supports_products=supported,
+                supports_reviews=supported,
+                supports_market_metrics=supported,
+                unavailable_reason=(
+                    None if supported else "当前商品、市场或平台没有可用固定数据集"
+                ),
+            )
+        ]
+
+    @staticmethod
+    def _reconcile_ambiguities(
+        ambiguities: list[str],
+        *,
+        keyword: str | None,
+    ) -> list[str]:
+        """移除已被确定性标准化解决的关键词缺失提示。"""
+
+        if not keyword:
+            return ambiguities
+        missing_terms = (
+            "未提供",
+            "没有提供",
+            "缺少",
+            "未明确",
+            "未指定",
+            "not provided",
+            "missing",
+            "unspecified",
+        )
+        keyword_terms = ("搜索关键词", "关键词", "搜索词", "keyword", "search term")
+        return [
+            item
+            for item in ambiguities
+            if not (
+                any(term in item.casefold() for term in missing_terms)
+                and any(term in item.casefold() for term in keyword_terms)
+            )
+        ]
 
     def _extract(self, user_query: str) -> tuple[MarketInputExtraction, list[PreviewWarning]]:
         warnings: list[PreviewWarning] = []
@@ -195,7 +290,14 @@ class MarketIntelligenceInputExtractor:
                         "platform": draft.platform or self._fallback_platform(user_query),
                     }
                 ), warnings
-            except LLMClientError:
+            except LLMClientError as exc:
+                logger.warning(
+                    "Market input extraction fell back to deterministic rules: "
+                    "code=%s provider=%s retryable=%s",
+                    exc.code,
+                    exc.provider,
+                    exc.retryable,
+                )
                 warnings.append(
                     PreviewWarning(
                         code="INPUT_EXTRACTION_FALLBACK",

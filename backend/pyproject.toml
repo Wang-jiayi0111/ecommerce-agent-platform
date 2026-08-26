@@ -17,6 +17,8 @@ dependencies = [
   "PyJWT[crypto]>=2.10",
   "pwdlib[argon2]>=0.2",
   "alembic>=1.14",
+  "huggingface-hub",
+  "datasets",
 ]
 
 [project.optional-dependencies]
@@ -38,6 +40,7 @@ testpaths = ["tests"]
 markers = [
   "integration: tests that cross persistence or adapter boundaries",
   "llm: tests that call a configured external LLM provider",
+  "e2e_postgres: isolated full-chain tests against a real PostgreSQL server",
 ]
 
 [tool.ruff]

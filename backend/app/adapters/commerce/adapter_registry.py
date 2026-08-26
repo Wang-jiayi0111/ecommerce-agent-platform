@@ -85,6 +85,11 @@ class CommerceAdapterRegistry:
                 f"{key[0]}/{key[1]}"
             ) from exc
 
+    def all(self) -> tuple[CommerceAdapter, ...]:
+        """返回已注册 Adapter，供能力预览使用。"""
+
+        return tuple(self._adapters.values())
+
     @staticmethod
     def _normalize(
         value: str,
