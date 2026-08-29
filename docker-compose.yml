@@ -2,6 +2,7 @@ x-common-environment: &common-environment
   DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://ecommerce_agent:change-me-for-local-only@db:5432/ecommerce_agent}
   REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
   AUTH_MODE: ${AUTH_MODE:-password}
+  AUTO_CREATE_SCHEMA: "false"
   JWT_SECRET: ${JWT_SECRET:-local-development-session-secret-change-before-production}
   LLM_PROVIDER: ${LLM_PROVIDER}
   LLM_API_KEY: ${LLM_API_KEY}
@@ -17,6 +18,10 @@ x-common-environment: &common-environment
   REVIEW_LLM_MAX_REVIEWS: ${REVIEW_LLM_MAX_REVIEWS:-60}
   REVIEW_LLM_BATCH_SIZE: ${REVIEW_LLM_BATCH_SIZE:-20}
   REVIEW_LLM_MAX_CONTENT_CHARS: ${REVIEW_LLM_MAX_CONTENT_CHARS:-8000}
+  MARKET_METRIC_UPLOAD_STORAGE_ROOT: ${MARKET_METRIC_UPLOAD_STORAGE_ROOT:-./data/uploads/market_metrics}
+  MARKET_METRIC_UPLOAD_MAX_BYTES: ${MARKET_METRIC_UPLOAD_MAX_BYTES:-5242880}
+  MARKET_METRIC_UPLOAD_MAX_UNCOMPRESSED_BYTES: ${MARKET_METRIC_UPLOAD_MAX_UNCOMPRESSED_BYTES:-52428800}
+  MARKET_METRIC_UPLOAD_MAX_ROWS: ${MARKET_METRIC_UPLOAD_MAX_ROWS:-500}
 
 services:
   db:

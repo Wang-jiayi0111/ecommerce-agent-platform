@@ -10,6 +10,7 @@ import TaskProgress from "../components/TaskProgress.vue";
 import { useMarketIntelligenceStore } from "../store/marketIntelligence";
 import type { MarketOverview } from "../types/marketIntelligence";
 
+const emit = defineEmits<{ metrics: [] }>();
 const store = useMarketIntelligenceStore();
 const coverage = ref<MarketOverview | null>(null);
 const coverageLoading = ref(true);
@@ -141,6 +142,7 @@ onBeforeUnmount(() => store.stopFollowing());
         v-if="report"
         :report="report"
         @evidence="store.showEvidence"
+        @metrics="emit('metrics')"
       />
 
       <section v-else-if="task.status === 'FAILED'" class="terminal-message failed">

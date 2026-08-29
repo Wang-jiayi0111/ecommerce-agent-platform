@@ -52,8 +52,10 @@ export interface MarketOverview {
   market: string;
   generated_at: string;
   monitored_category_count: number;
-  competitor_sample_count: number;
-  review_sample_count: number;
+  fixed_dataset_count: number;
+  connected_official_platform_count: number;
+  approved_market_metric_batch_count: number;
+  available_market_metric_count: number;
   available_metric_count: number;
   partial_metric_count: number;
   profit_ready_dataset_count: number;
@@ -118,6 +120,8 @@ export interface MarketIntelligenceRequest {
   keyword: string;
   platforms: string[];
   data_source_mode: DataSourceMode;
+  market_metric_batch_id: string | null;
+  market_metric_product_match: MarketMetricProductMatch | null;
   collection: CollectionOptions;
   profit_constraints: ProfitCalculatorParameters | null;
 }
@@ -423,4 +427,127 @@ export interface AgentTask {
 export interface AgentTaskList {
   items: AgentTask[];
   total: number;
+}
+
+export type MarketMetricBatchStatus =
+  | "pending_review"
+  | "approved"
+  | "rejected"
+  | "disabled";
+export type MarketMetricSourceType =
+  | "official_api"
+  | "official_report"
+  | "licensed_provider"
+  | "authorized_export"
+  | "manual_import";
+export type MarketMetricValueKind = "direct" | "derived";
+export type MarketMetricProductDecision = "same_product" | "different_product" | "uncertain";
+export type MarketMetricProductMatchMethod =
+  | "deterministic_alias"
+  | "deterministic_exact"
+  | "llm"
+  | "unavailable";
+
+export interface MarketMetricProductMatch {
+  batch_id: string;
+  decision: MarketMetricProductDecision;
+  confidence: number;
+  requested_product: string;
+  batch_product: string;
+  requested_normalized_name: string;
+  batch_normalized_name: string;
+  reason: string;
+  method: MarketMetricProductMatchMethod;
+  provider: string | null;
+  model: string | null;
+  prompt_version: string;
+}
+
+export interface MarketMetricBatchCreate {
+  platform: string;
+  market: string;
+  category: string;
+  keyword: string;
+  period_start: string;
+  period_end: string;
+  source_name: string;
+  source_type: MarketMetricSourceType;
+  source_description: string | null;
+  source_timestamp: string;
+  methodology: string;
+  license_or_authorization: string;
+  data_version: string;
+}
+
+export interface MarketMetricBatch extends MarketMetricBatchCreate {
+  id: string;
+  tenant_id: string;
+  trace_id: string;
+  created_at: string;
+  updated_at: string;
+  original_file_ref: string | null;
+  original_file_sha256: string | null;
+  status: MarketMetricBatchStatus;
+  uploaded_by: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  review_codes: string[];
+}
+
+export interface MarketMetricObservation {
+  id: string;
+  tenant_id: string;
+  trace_id: string;
+  created_at: string;
+  batch_id: string;
+  metric_code: string;
+  value_kind: MarketMetricValueKind;
+  value: string | number | null;
+  unit: string | null;
+  currency: string | null;
+  status: MetricStatus;
+  reason_code: string | null;
+  methodology: string;
+  source_timestamp: string;
+  growth_type: "yoy" | "qoq" | "mom" | "cagr" | null;
+  comparison_period_start: string | null;
+  comparison_period_end: string | null;
+  formula_code: string | null;
+  formula_version: string | null;
+  source_observation_ids: string[];
+  calculated_at: string | null;
+}
+
+export interface MarketMetricUploadResult {
+  schema_version: SchemaVersion;
+  batch_id: string;
+  status: MarketMetricBatchStatus;
+  direct_metric_count: number;
+  derived_metric_count: number;
+  created_at: string;
+  approval_codes: string[];
+  reviewed_by: string | null;
+}
+
+export interface MarketMetricBatchList {
+  items: MarketMetricBatch[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface MarketMetricBatchCandidate {
+  batch: MarketMetricBatch;
+  product_match: MarketMetricProductMatch;
+}
+
+export interface MarketMetricBatchCandidateList {
+  items: MarketMetricBatchCandidate[];
+}
+
+export interface MarketMetricBatchDetail {
+  batch: MarketMetricBatch;
+  direct_observations: MarketMetricObservation[];
+  derived_observations: MarketMetricObservation[];
 }

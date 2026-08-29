@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { onMounted, ref } from "vue";
 
 import { getMarketOverview } from "../api/marketIntelligence";
 import type {
@@ -12,6 +12,7 @@ import type {
 const emit = defineEmits<{
   create: [];
   task: [taskId: string];
+  metrics: [];
 }>();
 
 const overview = ref<MarketOverview | null>(null);
@@ -43,11 +44,6 @@ const stageStatusCopy: Record<MarketOverviewStageStatus, string> = {
   failed: "执行失败",
 };
 
-const latestDecision = computed(() => {
-  const assessment = overview.value?.latest_assessment;
-  return assessment ? decisionCopy[assessment.decision] : "暂无报告";
-});
-
 async function loadOverview() {
   loading.value = true;
   error.value = "";
@@ -77,9 +73,10 @@ onMounted(() => void loadOverview());
         <h1>市场机会</h1>
         <p>基于已登记数据集和历史分析任务，查看当前可分析类目、样本覆盖与最新进入建议。</p>
       </div>
-      <button type="button" class="create-button" @click="emit('create')">
-        ＋ 创建市场分析
-      </button>
+      <div class="header-actions">
+        <button type="button" class="metric-button" @click="emit('metrics')">宏观数据管理</button>
+        <button type="button" class="create-button" @click="emit('create')">＋ 创建市场分析</button>
+      </div>
     </header>
 
     <div v-if="loading" class="state-card" aria-live="polite">正在读取真实市场数据…</div>
@@ -90,23 +87,26 @@ onMounted(() => void loadOverview());
     <template v-else-if="overview">
       <section class="metric-row" aria-label="市场数据概览">
         <article>
-          <span>监测类目</span>
-          <strong>{{ overview.monitored_category_count }}</strong>
-          <small>{{ overview.datasets.length }} 个有效数据集</small>
+          <span>固定数据集</span>
+          <strong>{{ overview.fixed_dataset_count }} 个</strong>
+          <small>覆盖 {{ overview.monitored_category_count }} 个市场类目</small>
         </article>
         <article>
-          <span>竞品样本</span>
-          <strong>{{ overview.competitor_sample_count.toLocaleString("zh-CN") }}</strong>
-          <small>{{ overview.review_sample_count.toLocaleString("zh-CN") }} 条评论样本</small>
+          <span>已接入电商平台</span>
+          <strong>{{ overview.connected_official_platform_count }} 个</strong>
+          <small>{{ overview.connected_official_platform_count ? "官方 API 已授权并可用于商品分析" : "当前商品分析使用固定数据集" }}</small>
         </article>
-        <article class="decision-metric">
-          <span>最新进入建议</span>
-          <strong>{{ latestDecision }}</strong>
-          <small v-if="overview.latest_assessment">
-            {{ dateTime(overview.latest_assessment.generated_at) }} · {{ overview.latest_assessment.report_status }}
-          </small>
-          <small v-else>完成一次市场分析后生成</small>
-        </article>
+        <button
+          type="button"
+          class="metric-summary-button"
+          aria-label="进入宏观数据管理"
+          @click="emit('metrics')"
+        >
+          <span>宏观市场数据</span>
+          <strong>{{ overview.approved_market_metric_batch_count }} 个批次</strong>
+          <small>{{ overview.available_market_metric_count }} 项审核通过的可用指标</small>
+          <i aria-hidden="true">进入管理 →</i>
+        </button>
       </section>
 
       <section v-if="overview.latest_assessment" class="assessment-banner">
@@ -127,14 +127,14 @@ onMounted(() => void loadOverview());
           <article>
             <div class="capability-icon">M</div>
             <span>类目扫描</span>
-            <strong>{{ overview.available_metric_count }} 项指标可用</strong>
-            <p>{{ overview.partial_metric_count }} 项指标部分可用，统计范围来自有效固定数据集。</p>
+            <strong>{{ overview.fixed_dataset_count }} 个固定数据集</strong>
+            <p>覆盖 {{ overview.monitored_category_count }} 个类目；宏观指标和样本指标按来源分别展示。</p>
           </article>
           <article>
             <div class="capability-icon">C</div>
             <span>竞品拆解</span>
-            <strong>{{ overview.competitor_sample_count.toLocaleString("zh-CN") }} 个商品</strong>
-            <p>同时覆盖 {{ overview.review_sample_count.toLocaleString("zh-CN") }} 条评论，可用于竞品和用户反馈分析。</p>
+            <strong>按数据集查看样本</strong>
+            <p>每个类目的商品与评论数量在下方独立展示，避免跨类目累加造成误解。</p>
           </article>
           <article>
             <div class="capability-icon">P</div>
@@ -147,7 +147,7 @@ onMounted(() => void loadOverview());
 
       <div class="overview-columns">
         <section class="overview-section">
-          <div class="section-heading"><div><span>02</span><h2>有效数据集</h2></div></div>
+          <div class="section-heading"><div><span>02</span><h2>固定数据集明细</h2></div></div>
           <div v-if="overview.datasets.length" class="dataset-list">
             <article v-for="dataset in overview.datasets" :key="dataset.dataset_id">
               <div>
@@ -156,8 +156,8 @@ onMounted(() => void loadOverview());
                 <p>{{ dataset.category }} · {{ dataset.keyword }}</p>
               </div>
               <dl>
-                <div><dt>商品</dt><dd>{{ dataset.product_count.toLocaleString("zh-CN") }}</dd></div>
-                <div><dt>评论</dt><dd>{{ dataset.review_count.toLocaleString("zh-CN") }}</dd></div>
+                <div><dt>竞品样本</dt><dd>{{ dataset.product_count.toLocaleString("zh-CN") }}</dd></div>
+                <div><dt>评论样本</dt><dd>{{ dataset.review_count.toLocaleString("zh-CN") }}</dd></div>
                 <div><dt>数据截止</dt><dd>{{ dateTime(dataset.source_timestamp) }}</dd></div>
               </dl>
             </article>
@@ -211,16 +211,22 @@ onMounted(() => void loadOverview());
 .overview-header h1 { margin: 0.3rem 0; font-size: clamp(1.8rem, 3vw, 2.55rem); letter-spacing: -0.035em; }
 .overview-header p { max-width: 720px; margin: 0; color: var(--muted); line-height: 1.6; }
 .create-button { flex: 0 0 auto; padding: 0.72rem 1rem; color: #fff; background: #3456b2; border: 0; border-radius: 10px; font-weight: 750; box-shadow: 0 8px 20px rgb(52 86 178 / 20%); }
+.header-actions { display: flex; flex: 0 0 auto; gap: .6rem; }
+.metric-button { padding: .72rem 1rem; color: #3f5791; background: #fff; border: 1px solid #ccd5e5; border-radius: 10px; font-weight: 750; }
+.metric-button:hover { background: #f5f7fb; border-color: #afbdd5; }
 .state-card { padding: 2rem; color: var(--muted); background: #fff; border: 1px solid #dfe5ed; border-radius: 14px; text-align: center; }
 .state-card.error { display: flex; justify-content: space-between; color: #793943; background: #fff8f8; border-color: #ebc9cd; }
 .state-card button { color: inherit; background: transparent; border: 0; font-weight: 700; }
 .metric-row { display: grid; grid-template-columns: repeat(3, 1fr); overflow: hidden; background: #fff; border: 1px solid #dde3ec; border-radius: 16px; }
-.metric-row article { display: flex; min-width: 0; padding: 1.25rem 1.4rem; border-right: 1px solid #e4e8ef; flex-direction: column; }
-.metric-row article:last-child { border: 0; }
+.metric-row > * { display: flex; min-width: 0; padding: 1.25rem 1.4rem; border: 0; border-right: 1px solid #e4e8ef; flex-direction: column; }
+.metric-row > :last-child { border-right: 0; }
 .metric-row span { color: #748198; font-size: 0.7rem; font-weight: 700; }
 .metric-row strong { margin: 0.25rem 0; font-size: 1.65rem; }
 .metric-row small { overflow: hidden; color: #8994a7; font-size: 0.67rem; text-overflow: ellipsis; white-space: nowrap; }
-.decision-metric strong { color: #31559c; font-size: 1.25rem; }
+.metric-summary-button { position: relative; color: var(--ink); font: inherit; text-align: left; background: #fff; cursor: pointer; transition: background-color 160ms ease, box-shadow 160ms ease; }
+.metric-summary-button i { margin-top: 0.6rem; color: #4260af; font-size: 0.65rem; font-style: normal; font-weight: 750; }
+.metric-summary-button:hover { background: #f6f8fd; box-shadow: inset 0 0 0 1px #cbd5eb; }
+.metric-summary-button:focus-visible { z-index: 1; outline: 2px solid #4664bc; outline-offset: -3px; }
 .assessment-banner { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 1.2rem; margin-top: 1rem; padding: 1rem 1.2rem; color: #284c3c; background: #e8f5ee; border: 1px solid #c7e5d5; border-radius: 13px; }
 .assessment-banner > div { display: flex; flex-direction: column; }
 .assessment-banner span { font-size: 0.6rem; font-weight: 750; }
@@ -273,6 +279,6 @@ onMounted(() => void loadOverview());
 .empty-action p { margin: 0 0 0.5rem; }
 .empty-action button { color: #3655b3; background: transparent; border: 0; font-weight: 750; }
 @media (max-width: 991px) { .overview-columns { grid-template-columns: 1fr; } .dataset-list article { grid-template-columns: 1fr; } }
-@media (max-width: 767px) { .overview-header { align-items: stretch; flex-direction: column; } .metric-row, .capability-grid, .assessment-banner { grid-template-columns: 1fr; } .metric-row article { border-right: 0; border-bottom: 1px solid #e4e8ef; } .create-button { width: 100%; } .assessment-banner button { justify-self: start; padding: 0; } }
+@media (max-width: 767px) { .overview-header { align-items: stretch; flex-direction: column; } .metric-row, .capability-grid, .assessment-banner { grid-template-columns: 1fr; } .metric-row > * { border-right: 0; border-bottom: 1px solid #e4e8ef; } .metric-row > :last-child { border-bottom: 0; } .header-actions { width: 100%; }.header-actions button { flex: 1; } .assessment-banner button { justify-self: start; padding: 0; } }
 @media (max-width: 575px) { .section-heading { align-items: flex-start; flex-direction: column; } .dataset-list dl { align-items: flex-start; flex-direction: column; gap: 0.45rem; } .recent-list > button { grid-template-columns: auto 1fr; } .recent-list small, .recent-list i { grid-column: 2; } }
 </style>

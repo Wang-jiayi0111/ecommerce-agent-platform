@@ -12,7 +12,10 @@ import type {
 } from "../types/marketIntelligence";
 
 const props = defineProps<{ report: MarketIntelligenceReport }>();
-const emit = defineEmits<{ evidence: [ids: string[], product?: CompetitorItem] }>();
+const emit = defineEmits<{
+  evidence: [ids: string[], product?: CompetitorItem];
+  metrics: [];
+}>();
 
 const statusCopy: Record<string, string> = {
   available: "可用", unavailable: "不可用", partial: "部分可用",
@@ -23,7 +26,12 @@ const dataSourceCopy: Record<string, string> = {
   fixed_dataset: "固定数据集", official_api: "官方 API",
 };
 const metricCopy: Record<string, string> = {
-  market_size: "市场规模", gmv: "商品交易总额", growth: "市场增长率",
+  market_size: "市场规模", gmv: "商品交易总额（GMV）",
+  sales_volume: "市场销售量", order_count: "市场订单量",
+  active_product_count: "活跃商品数", active_brand_count: "活跃品牌数",
+  category_traffic: "类目访问量", growth: "市场增长率",
+  cagr: "复合年增长率", average_transaction_price: "平均成交价",
+  gmv_market_share: "GMV 市场占比",
   price_distribution: "市场价格分布", brand_concentration: "品牌集中度",
   product_concentration: "商品集中度", sample_product_count: "数据集商品总数",
   sample_min_price: "样本最低价", sample_max_price: "样本最高价",
@@ -39,7 +47,15 @@ const metricCopy: Record<string, string> = {
 const metricDescription: Record<string, string> = {
   market_size: "目标市场在当前统计范围内的整体规模。固定数据集缺少全市场汇总数据时，该指标会显示为暂不可用。",
   gmv: "目标市场在统计周期内的商品交易总额，用于判断市场容量。",
+  sales_volume: "统计周期内目标市场产生的商品销售数量。",
+  order_count: "统计周期内目标市场产生的有效订单数量。",
+  active_product_count: "统计周期内产生销售、访问或其他有效经营活动的商品数量。",
+  active_brand_count: "统计周期内产生销售、访问或其他有效经营活动的品牌数量。",
+  category_traffic: "统计周期内目标类目获得的访问量，用于观察市场关注度和流量基础。",
   growth: "目标市场规模随时间的变化速度，用于判断市场处于增长、稳定或收缩阶段。",
+  cagr: "根据多个年度统计周期计算的复合年增长率，用于观察市场的中长期增长趋势。",
+  average_transaction_price: "由商品交易总额除以销售量计算，表示统计周期内每件商品的平均成交金额。",
+  gmv_market_share: "商品交易总额占整体市场规模的比例，用于观察当前统计口径覆盖的市场份额。",
   price_distribution: "目标市场商品价格的整体分布情况，用于识别主流价格带。",
   brand_concentration: "头部品牌所占份额，用于判断市场是否已被少数品牌主导。",
   product_concentration: "头部商品所占份额，用于判断销量是否集中在少数爆款。",
@@ -84,6 +100,8 @@ const reasonCopy: Record<string, string> = {
   COST_INPUT_UNAVAILABLE: "成本参数不完整",
   LLM_UNAVAILABLE: "报告合成服务不可用",
   PRODUCT_COLLECTION_PARTIAL: "商品样本采集不完整",
+  BRAND_DATA_UNAVAILABLE: "商品样本缺少品牌信息",
+  SELECTED_MARKET_METRIC_BATCH_INVALID: "所选宏观市场数据批次已失效或范围不匹配",
 };
 const sentimentCopy: Record<string, string> = {
   total_count: "评论总数",
@@ -96,7 +114,14 @@ const sentimentCopy: Record<string, string> = {
   negative_count: "负面评论数",
   negative_ratio: "负面占比",
 };
-const unitCopy: Record<string, string> = { count: "个", ratio: "比例" };
+const unitCopy: Record<string, string> = {
+  count: "个", ratio: "%", percent: "%", percentage: "%", "%": "%",
+  unit: "件", units: "件", product: "个商品", products: "个商品",
+  brand: "个品牌", brands: "个品牌", order: "笔订单", orders: "笔订单",
+  visit: "次访问", visits: "次访问", session: "次访问", sessions: "次访问",
+  USD: "美元", CNY: "人民币", EUR: "欧元", GBP: "英镑", JPY: "日元",
+  SEK: "瑞典克朗", CAD: "加元", AUD: "澳元",
+};
 
 const decisionCopy: Record<EntryDecision, { label: string; tone: string }> = {
   GO: { label: "建议进入", tone: "go" },
@@ -105,6 +130,24 @@ const decisionCopy: Record<EntryDecision, { label: string; tone: string }> = {
   INSUFFICIENT_DATA: { label: "信息不足", tone: "limited" },
 };
 const decision = computed(() => decisionCopy[props.report.entry_assessment.decision]);
+const visibleDataLimitations = computed(() =>
+  props.report.data_limitations.filter(
+    (item) => !/^market_snapshot\.[^.]+$/.test(item.field),
+  ),
+);
+const visibleSnapshotMetrics = computed(() =>
+  props.report.market_snapshot.metrics.filter(
+    (metric) => metric.status !== "unavailable" && metric.value !== null,
+  ),
+);
+const unavailableSnapshotMetrics = computed(() =>
+  props.report.market_snapshot.metrics.filter(
+    (metric) => metric.status === "unavailable" || metric.value === null,
+  ),
+);
+const hasUnavailableMacroMetrics = computed(() =>
+  unavailableSnapshotMetrics.value.some((metric) => !metric.metric_code.startsWith("sample_")),
+);
 const datasetProductCount = computed(() => {
   const metric = props.report.market_snapshot.metrics.find(
     (item) => item.metric_code === "sample_product_count",
@@ -188,10 +231,18 @@ function dateTime(value: string | null) {
   );
 }
 
-function valueText(value: JsonValue, unit: string | null, status?: string) {
+function valueText(metric: MarketMetric) {
+  const { value, unit, status } = metric;
   if (status === "unavailable" || value === null) return "当前数据无法提供";
   const raw = typeof value === "object" ? JSON.stringify(localizeJson(value)) : formatNumber(value);
-  return unit ? `${raw} ${copy(unit, unitCopy)}` : raw;
+  if (!unit || typeof value === "object") return raw;
+  if (unit === "ratio") return percent(value as string | number);
+  if (["percent", "percentage", "%"].includes(unit)) return `${raw}%`;
+  return `${raw} ${localizedUnit(unit)}`;
+}
+
+function localizedUnit(unit: string) {
+  return unitCopy[unit] || unitCopy[unit.toUpperCase()] || unitCopy[unit.toLowerCase()] || unit;
 }
 
 function formatNumber(value: JsonValue) {
@@ -226,6 +277,10 @@ function metricWarning(metric: MarketMetric) {
   return null;
 }
 
+function unavailableMetricReason(metric: MarketMetric) {
+  return copy(metric.reason_code || "MARKET_METRIC_INCOMPLETE", reasonCopy);
+}
+
 function toggleMetricHelp(metricCode: string) {
   openMetricHelp.value = openMetricHelp.value === metricCode ? null : metricCode;
 }
@@ -240,6 +295,7 @@ onBeforeUnmount(() => document.removeEventListener("click", closeMetricHelp));
 function formatMetricField(metric: MarketMetric, key: string, value: JsonValue) {
   if (value === null) return "暂无数据";
   if (key.endsWith("ratio") || key.endsWith("share")) return percent(value as string | number);
+  if (key === "currency" && typeof value === "string") return localizedUnit(value);
   if (key === "start_date" || key === "end_date") {
     const date = new Date(String(value));
     return Number.isNaN(date.getTime()) ? String(value) : new Intl.DateTimeFormat("zh-CN").format(date);
@@ -258,7 +314,9 @@ function formatMetricField(metric: MarketMetric, key: string, value: JsonValue) 
   }
   if (["total_review_count", "dated_review_count"].includes(key)) return `${formatted} 条`;
   if (["min", "max", "mean", "median"].includes(key)) {
-    if (metric.metric_code.includes("price")) return `${metric.unit || ""} ${formatted}`.trim();
+    if (metric.metric_code.includes("price")) {
+      return metric.unit ? `${formatted} ${localizedUnit(metric.unit)}` : formatted;
+    }
     if (metric.metric_code.includes("rating")) return `${formatted} 分`;
     if (metric.metric_code.includes("review_count")) return `${formatted} 条`;
   }
@@ -347,7 +405,7 @@ function competitorAriaSort(key: CompetitorSortKey) {
   <section class="report-shell" aria-labelledby="report-title">
     <header class="report-hero">
       <div>
-        <span class="eyebrow">Market intelligence · {{ copy(report.status, statusCopy) }}</span>
+        <span class="eyebrow">市场情报 · {{ copy(report.status, statusCopy) }}</span>
         <h2 id="report-title">{{ report.scope.keyword }} 市场机会报告</h2>
         <p>
           {{ report.scope.platforms.join(" / ") }} · {{ report.scope.market }} ·
@@ -367,13 +425,13 @@ function competitorAriaSort(key: CompetitorSortKey) {
       <div><span>数据截止</span><strong>{{ dateTime(report.scope.end_time) }}</strong></div>
     </div>
 
-    <section v-if="report.data_limitations.length" class="limitations" aria-labelledby="limitations-title">
+    <section v-if="visibleDataLimitations.length" class="limitations" aria-labelledby="limitations-title">
       <div class="section-title">
         <div><span>优先阅读</span><h3 id="limitations-title">数据限制</h3></div>
-        <b>{{ report.data_limitations.length }} 项影响</b>
+        <b>{{ visibleDataLimitations.length }} 项影响</b>
       </div>
       <div class="limitation-grid">
-        <article v-for="item in report.data_limitations" :key="item.limitation_id">
+        <article v-for="item in visibleDataLimitations" :key="item.limitation_id">
           <div><span>{{ copy(item.status, statusCopy) }}</span><code>{{ fieldLabel(item.field) }}</code></div>
           <h4>{{ item.message }}</h4>
           <p>原因：{{ copy(item.reason_code, reasonCopy) }}</p>
@@ -389,9 +447,9 @@ function competitorAriaSort(key: CompetitorSortKey) {
         <div><span>01</span><h3 id="snapshot-title">市场快照</h3></div>
         <b>{{ copy(report.market_snapshot.status, statusCopy) }}</b>
       </div>
-      <div v-if="report.market_snapshot.metrics.length" class="metric-grid">
+      <div v-if="visibleSnapshotMetrics.length" class="metric-grid">
         <article
-          v-for="metric in report.market_snapshot.metrics"
+          v-for="metric in visibleSnapshotMetrics"
           :key="metric.metric_code"
           class="metric-card"
         >
@@ -441,7 +499,7 @@ function competitorAriaSort(key: CompetitorSortKey) {
               <dd v-else>{{ formatMetricField(metric, key, value) }}</dd>
             </div>
           </dl>
-          <strong v-else>{{ valueText(metric.value, metric.unit, metric.status) }}</strong>
+          <strong v-else>{{ valueText(metric) }}</strong>
           <small v-if="metricWarning(metric)" class="metric-warning">{{ metricWarning(metric) }}</small>
           <button
             v-if="metric.evidence_ids.length"
@@ -453,7 +511,30 @@ function competitorAriaSort(key: CompetitorSortKey) {
           </button>
         </article>
       </div>
-      <p v-else class="unavailable">当前数据无法提供市场指标。</p>
+      <p v-else-if="!unavailableSnapshotMetrics.length" class="unavailable">当前数据无法提供市场指标。</p>
+      <details v-if="unavailableSnapshotMetrics.length" class="unavailable-metrics">
+        <summary>
+          <span>
+            <strong>{{ unavailableSnapshotMetrics.length }} 项市场指标暂无数据</strong>
+            <small>已收起，不影响查看其他可用结果</small>
+          </span>
+          <b>展开查看</b>
+        </summary>
+        <div class="unavailable-metric-list">
+          <div v-for="metric in unavailableSnapshotMetrics" :key="`unavailable-${metric.metric_code}`">
+            <strong>{{ copy(metric.metric_code, metricCopy) }}</strong>
+            <span>{{ unavailableMetricReason(metric) }}</span>
+          </div>
+        </div>
+        <button
+          v-if="hasUnavailableMacroMetrics"
+          class="manage-metrics-link"
+          type="button"
+          @click="emit('metrics')"
+        >
+          上传宏观市场数据 →
+        </button>
+      </details>
     </section>
 
     <section class="report-section" aria-labelledby="competitor-title">
@@ -683,6 +764,23 @@ button { color: #3655b3; background: transparent; border: 0; font-weight: 700; }
 .metric-warning { margin-top: 0.15rem; padding: 0.5rem 0.6rem; color: #795c1d; background: #fff5d9; border-radius: 6px; font-size: 0.65rem; font-weight: 500; line-height: 1.45; }
 .metric-evidence { align-self: flex-start; margin-top: auto; padding: 0.7rem 0 0; color: #4664bc; font-size: 0.65rem; cursor: pointer; }
 .metric-evidence:focus-visible { outline: 2px solid #4664bc; outline-offset: 3px; border-radius: 3px; }
+.unavailable-metrics { margin-top: 0.85rem; overflow: hidden; background: #f7f8fa; border: 1px solid #e5e8ee; border-radius: 10px; }
+.unavailable-metrics summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.85rem 1rem; color: #68758a; cursor: pointer; list-style: none; }
+.unavailable-metrics summary::-webkit-details-marker { display: none; }
+.unavailable-metrics summary span { display: flex; min-width: 0; flex-direction: column; }
+.unavailable-metrics summary strong { color: #4c596f; font-size: 0.76rem; }
+.unavailable-metrics summary small { margin-top: 0.15rem; font-size: 0.65rem; }
+.unavailable-metrics summary > b { flex: 0 0 auto; color: #5c70a8; font-size: 0.66rem; }
+.unavailable-metrics[open] summary { border-bottom: 1px solid #e5e8ee; }
+.unavailable-metrics[open] summary > b { font-size: 0; }
+.unavailable-metrics[open] summary > b::after { font-size: 0.66rem; content: "收起"; }
+.unavailable-metric-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; padding: 0.8rem 1rem; }
+.unavailable-metric-list div { display: flex; min-width: 0; justify-content: space-between; gap: 0.75rem; padding: 0.55rem 0.65rem; background: #fff; border-radius: 7px; }
+.unavailable-metric-list strong { color: #3d4a60; font-size: 0.7rem; }
+.unavailable-metric-list span { color: #8791a2; font-size: 0.65rem; text-align: right; }
+.manage-metrics-link { margin: 0 1rem 0.9rem; padding: 0.5rem 0.7rem; color: #405da9; background: #fff; border: 1px solid #cbd5ed; border-radius: 7px; font-size: 0.68rem; font-weight: 750; }
+.manage-metrics-link:hover { background: #f1f4fb; border-color: #9eafd5; }
+.manage-metrics-link:focus-visible { outline: 2px solid #4664bc; outline-offset: 2px; }
 .table-wrap { overflow: auto; }
 table { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 0.75rem; }
 th { padding: 0.65rem; color: #7e899c; background: #f5f7fa; text-align: left; font-size: 0.66rem; }
@@ -762,6 +860,7 @@ td small { color: #929cad; }
   .scope-strip,
   .metric-grid,
   .limitation-grid,
+  .unavailable-metric-list,
   .statement-columns { grid-template-columns: 1fr; }
   .report-footer { align-items: flex-start; gap: 0.7rem; flex-direction: column; }
 }

@@ -492,6 +492,12 @@ class MarketIntelligenceGraph:
                 "market": request.market,
                 "category": request.category,
                 "keyword": request.keyword,
+                "market_metric_batch_id": request.market_metric_batch_id,
+                "market_metric_product_match": (
+                    request.market_metric_product_match.model_dump(mode="json")
+                    if request.market_metric_product_match
+                    else None
+                ),
                 "data_source_mode": request.data_source_mode.value,
                 "products": [item.model_dump(mode="json") for item in products],
                 "evidence_refs": [
@@ -512,6 +518,26 @@ class MarketIntelligenceGraph:
         else:
             metrics = self._models(response, "metrics", MarketMetric)
             evidence = self._models(response, "evidence_refs", EvidenceReference)
+            response_warnings = [str(item) for item in response.data.get("warnings", [])]
+            if any(
+                item.startswith("SELECTED_MARKET_METRIC_BATCH_INVALID:")
+                for item in response_warnings
+            ):
+                limitations = self._merge_limitations(
+                    limitations,
+                    [
+                        self._unavailable(
+                            "selected-market-metric-batch",
+                            "market_snapshot",
+                            "SELECTED_MARKET_METRIC_BATCH_INVALID",
+                            "所选宏观市场数据批次已失效或不再适用于当前平台和市场。",
+                        )
+                    ],
+                )
+                flags = self._merge_strings(
+                    flags,
+                    ["SELECTED_MARKET_METRIC_BATCH_INVALID"],
+                )
             missing = [metric for metric in metrics if metric.status is not MetricStatus.AVAILABLE]
             limitations = self._merge_limitations(
                 limitations,
@@ -607,22 +633,10 @@ class MarketIntelligenceGraph:
                 data={"schema_version": "1.0", "profit_analysis": analysis.model_dump(mode="json")},
                 source=self.profit_calculator_tool.name,
                 trace_id=state["context"].trace_id,
-                degraded=True,
-            )
-            limitation = self._unavailable(
-                "profit-inputs",
-                "profit_analysis",
-                "COST_INPUT_UNAVAILABLE",
-                "未提供完整的利润测算参数。",
+                degraded=False,
             )
             return {
                 "profit_result": response,
-                "data_limitations": self._merge_limitations(
-                    state["data_limitations"], [limitation]
-                ),
-                "degraded_flags": self._merge_strings(
-                    state["degraded_flags"], ["COST_INPUT_UNAVAILABLE"]
-                ),
                 "error": None,
             }
 

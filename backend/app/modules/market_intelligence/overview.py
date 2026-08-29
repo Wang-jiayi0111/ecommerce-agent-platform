@@ -5,10 +5,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.adapters.commerce import CommerceAdapterRegistry
 from app.adapters.commerce.dataset import DatasetRegistry
 from app.domain import AgentTask, TaskEventType, TaskStatus
-from app.modules.market_intelligence.schemas import MarketIntelligenceReport
+from app.modules.market_intelligence.schemas import DataSourceMode, MarketIntelligenceReport
 from app.repositories import TaskRepository
+from app.repositories.market_metric_repository import MarketMetricRepository
 
 
 class MarketDatasetOverview(BaseModel):
@@ -69,8 +71,10 @@ class MarketOverview(BaseModel):
     market: str
     generated_at: datetime
     monitored_category_count: int = Field(ge=0)
-    competitor_sample_count: int = Field(ge=0)
-    review_sample_count: int = Field(ge=0)
+    fixed_dataset_count: int = Field(ge=0)
+    connected_official_platform_count: int = Field(ge=0)
+    approved_market_metric_batch_count: int = Field(ge=0)
+    available_market_metric_count: int = Field(ge=0)
     available_metric_count: int = Field(ge=0)
     partial_metric_count: int = Field(ge=0)
     profit_ready_dataset_count: int = Field(ge=0)
@@ -117,9 +121,17 @@ class MarketOverviewService:
         ),
     )
 
-    def __init__(self, registry: DatasetRegistry, task_repository: TaskRepository) -> None:
+    def __init__(
+        self,
+        registry: DatasetRegistry,
+        task_repository: TaskRepository,
+        commerce_registry: CommerceAdapterRegistry,
+        market_metric_repository: MarketMetricRepository,
+    ) -> None:
         self._registry = registry
         self._tasks = task_repository
+        self._commerce = commerce_registry
+        self._market_metrics = market_metric_repository
 
     def overview(
         self,
@@ -154,13 +166,19 @@ class MarketOverviewService:
         ]
         latest_task = market_tasks[0] if market_tasks else None
         latest_report = self._latest_report(market_tasks)
+        metric_stats = self._market_metrics.overview_stats(
+            tenant_id=tenant_id,
+            market=market,
+        )
 
         return MarketOverview(
             market=market,
             generated_at=datetime.now(UTC),
             monitored_category_count=len({item.category.casefold() for item in datasets}),
-            competitor_sample_count=sum(item.product_count for item in datasets),
-            review_sample_count=sum(item.review_count for item in datasets),
+            fixed_dataset_count=len(datasets),
+            connected_official_platform_count=self._official_platform_count(tenant_id),
+            approved_market_metric_batch_count=metric_stats.approved_batch_count,
+            available_market_metric_count=metric_stats.available_metric_count,
             available_metric_count=sum(item.available_metric_count for item in datasets),
             partial_metric_count=sum(item.partial_metric_count for item in datasets),
             profit_ready_dataset_count=sum(item.profit_input_available for item in datasets),
@@ -170,6 +188,18 @@ class MarketOverviewService:
             recent_tasks=[self._task(task) for task in market_tasks[:5]],
             pipeline=self._pipeline(latest_task),
         )
+
+    def _official_platform_count(self, tenant_id: str) -> int:
+        platforms: set[str] = set()
+        for adapter in self._commerce.all():
+            if adapter.data_source_mode != DataSourceMode.OFFICIAL_API.value:
+                continue
+            if not adapter.capabilities().supports_products:
+                continue
+            authorization_check = getattr(adapter, "is_authorized", None)
+            if callable(authorization_check) and authorization_check(tenant_id):
+                platforms.add(adapter.platform.casefold())
+        return len(platforms)
 
     @staticmethod
     def _line_count(path: Path) -> int:

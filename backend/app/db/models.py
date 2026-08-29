@@ -218,6 +218,7 @@ class MarketMetricBatchRecord(TenantAuditRecord):
         DateTime(timezone=True), nullable=True
     )
     review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    review_codes: Mapped[list[str]] = mapped_column(JSON, default=list)
 
 
 class MarketMetricObservationRecord(TenantAuditRecord):

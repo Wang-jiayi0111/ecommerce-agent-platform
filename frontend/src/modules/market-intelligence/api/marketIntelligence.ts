@@ -1,6 +1,12 @@
 import { authenticatedFetch } from "../../../auth/session";
 import type {
   AgentTask,
+  MarketMetricBatchCreate,
+  MarketMetricBatchCandidateList,
+  MarketMetricBatchDetail,
+  MarketMetricBatchList,
+  MarketMetricBatchStatus,
+  MarketMetricUploadResult,
   MarketOverview,
   MarketIntelligenceRequest,
   TaskCreate,
@@ -39,7 +45,9 @@ async function parseError(response: Response): Promise<MarketIntelligenceApiErro
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const headers = new Headers(options?.headers);
-  if (options?.body) headers.set("Content-Type", "application/json");
+  if (options?.body && !(options.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
   const response = await authenticatedFetch(path, { ...options, headers });
   if (!response.ok) throw await parseError(response);
   return response.json() as Promise<T>;
@@ -83,6 +91,55 @@ export function getMarketTask(taskId: string): Promise<AgentTask> {
 
 export function getMarketOverview(market = "US"): Promise<MarketOverview> {
   return request<MarketOverview>(`/api/v1/analytics/market?market=${encodeURIComponent(market)}`);
+}
+
+const marketMetricPath = "/api/v1/market-intelligence/market-metrics";
+
+export function uploadMarketMetrics(
+  batch: MarketMetricBatchCreate,
+  file: File,
+): Promise<MarketMetricUploadResult> {
+  const body = new FormData();
+  body.set("batch", JSON.stringify(batch));
+  body.set("file", file);
+  return request<MarketMetricUploadResult>(marketMetricPath, { method: "POST", body });
+}
+
+export function listMarketMetricBatches(options: {
+  status?: MarketMetricBatchStatus;
+  platform?: string;
+  market?: string;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<MarketMetricBatchList> {
+  const query = new URLSearchParams();
+  if (options.status) query.set("status", options.status);
+  if (options.platform) query.set("platform", options.platform);
+  if (options.market) query.set("market", options.market);
+  query.set("limit", String(options.limit ?? 20));
+  query.set("offset", String(options.offset ?? 0));
+  return request<MarketMetricBatchList>(`${marketMetricPath}?${query.toString()}`);
+}
+
+export function getMarketMetricBatch(batchId: string): Promise<MarketMetricBatchDetail> {
+  return request<MarketMetricBatchDetail>(`${marketMetricPath}/${encodeURIComponent(batchId)}`);
+}
+
+export function listMarketMetricCandidates(options: {
+  platform: string;
+  market: string;
+  category: string;
+  keyword: string;
+  limit?: number;
+}): Promise<MarketMetricBatchCandidateList> {
+  const query = new URLSearchParams({
+    platform: options.platform,
+    market: options.market,
+    category: options.category,
+    keyword: options.keyword,
+    limit: String(options.limit ?? 50),
+  });
+  return request<MarketMetricBatchCandidateList>(`${marketMetricPath}/candidates?${query}`);
 }
 
 export function cancelMarketTask(taskId: string): Promise<AgentTask> {

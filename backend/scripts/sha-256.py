@@ -8,7 +8,7 @@ DATASET_DIR = (
     BASE_DIR
     / "data"
     / "market_intelligence"
-    / "amazon_us_portable_coffee_v1"
+    / "amazon_us_portable_blender_v1"
 )
 
 

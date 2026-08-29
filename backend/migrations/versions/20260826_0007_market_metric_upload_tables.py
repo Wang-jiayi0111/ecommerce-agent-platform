@@ -21,7 +21,34 @@ def _tenant_columns() -> tuple[sa.Column, ...]:
     )
 
 
+def _remove_empty_unversioned_tables() -> None:
+    """接管 create_all 在 0007 执行前误建的空表。"""
+    connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    batch_exists = inspector.has_table("market_metric_batch")
+    observation_exists = inspector.has_table("market_metric_observation")
+    if not batch_exists and not observation_exists:
+        return
+    if batch_exists != observation_exists:
+        raise RuntimeError(
+            "market metric schema is partially present; manual reconciliation is required"
+        )
+    batch_count = connection.scalar(
+        sa.text("SELECT COUNT(*) FROM market_metric_batch")
+    )
+    observation_count = connection.scalar(
+        sa.text("SELECT COUNT(*) FROM market_metric_observation")
+    )
+    if batch_count or observation_count:
+        raise RuntimeError(
+            "unversioned market metric tables contain data; migration stopped to protect it"
+        )
+    op.drop_table("market_metric_observation")
+    op.drop_table("market_metric_batch")
+
+
 def upgrade() -> None:
+    _remove_empty_unversioned_tables()
     op.create_table(
         "market_metric_batch",
         *_tenant_columns(),
@@ -46,6 +73,7 @@ def upgrade() -> None:
         sa.Column("reviewed_by", sa.String(64), nullable=True),
         sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("review_note", sa.Text(), nullable=True),
+        sa.Column("review_codes", sa.JSON(), nullable=False),
         sa.UniqueConstraint(
             "tenant_id",
             "platform",

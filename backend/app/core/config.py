@@ -35,7 +35,7 @@ class Settings:
     jwt_audience: str | None = getenv("JWT_AUDIENCE")
     task_execution_mode: str = getenv("TASK_EXECUTION_MODE", "inline")
     task_lease_seconds: int = int(getenv("TASK_LEASE_SECONDS", "300"))
-    auto_create_schema: bool = getenv("AUTO_CREATE_SCHEMA", "true").lower() == "true"
+    auto_create_schema: bool = getenv("AUTO_CREATE_SCHEMA", "false").lower() == "true"
     access_token_minutes: int = int(getenv("ACCESS_TOKEN_MINUTES", "480"))
     bootstrap_admin_tenant: str = getenv("BOOTSTRAP_ADMIN_TENANT", "local")
     bootstrap_admin_username: str = getenv("BOOTSTRAP_ADMIN_USERNAME", "admin")
@@ -44,6 +44,19 @@ class Settings:
     market_max_product_limit: int = int(getenv("MARKET_MAX_PRODUCT_LIMIT", "50"))
     market_max_reviews_per_product: int = int(
         getenv("MARKET_MAX_REVIEWS_PER_PRODUCT", "50")
+    )
+    market_metric_upload_storage_root: str = getenv(
+        "MARKET_METRIC_UPLOAD_STORAGE_ROOT",
+        "./data/uploads/market_metrics",
+    )
+    market_metric_upload_max_bytes: int = int(
+        getenv("MARKET_METRIC_UPLOAD_MAX_BYTES", str(5 * 1024 * 1024))
+    )
+    market_metric_upload_max_uncompressed_bytes: int = int(
+        getenv("MARKET_METRIC_UPLOAD_MAX_UNCOMPRESSED_BYTES", str(50 * 1024 * 1024))
+    )
+    market_metric_upload_max_rows: int = int(
+        getenv("MARKET_METRIC_UPLOAD_MAX_ROWS", "500")
     )
 
     llm_provider: str | None = getenv("LLM_PROVIDER")
@@ -88,8 +101,22 @@ class Settings:
             raise RuntimeError("TASK_EXECUTION_MODE must be 'inline' or 'worker'")
         if self.task_lease_seconds < 30:
             raise RuntimeError("TASK_LEASE_SECONDS must be at least 30")
-        if self.environment.lower() in {"production", "prod"} and self.auto_create_schema:
-            raise RuntimeError("AUTO_CREATE_SCHEMA=true is forbidden in production; run Alembic")
+        if self.market_metric_upload_max_bytes < 1:
+            raise RuntimeError("MARKET_METRIC_UPLOAD_MAX_BYTES must be positive")
+        if (
+            self.market_metric_upload_max_uncompressed_bytes
+            < self.market_metric_upload_max_bytes
+        ):
+            raise RuntimeError(
+                "MARKET_METRIC_UPLOAD_MAX_UNCOMPRESSED_BYTES must be at least "
+                "MARKET_METRIC_UPLOAD_MAX_BYTES"
+            )
+        if self.market_metric_upload_max_rows < 1:
+            raise RuntimeError("MARKET_METRIC_UPLOAD_MAX_ROWS must be positive")
+        if self.auto_create_schema:
+            raise RuntimeError(
+                "AUTO_CREATE_SCHEMA=true is no longer supported; run Alembic migrations"
+            )
 
         required_llm_settings = {
             "LLM_PROVIDER": self.llm_provider,

@@ -5,7 +5,7 @@ INPUT_EXTRACTION_SYSTEM_PROMPT = """You extract structured market-analysis input
 Return only fields supported by the user's message. Do not invent product costs.
 
 Convert percentage margins to a ratio between 0 and 1.
-Use US for the United States and lowercase platform names.
+The country uses abbreviations, such as the United States (US), and lowercase platform names.
 Keep product_name as the specific product being analyzed.
 When product_name clearly identifies a specific product, it is also a valid
 search keyword. Copy it to keyword and do not report a missing-keyword ambiguity.

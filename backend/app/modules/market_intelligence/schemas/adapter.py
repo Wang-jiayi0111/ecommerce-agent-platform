@@ -12,6 +12,7 @@ from app.modules.market_intelligence.schemas.common import (
     NonEmptyStr,
     NonNegativeInt,
 )
+from app.modules.market_intelligence.schemas.market_metric import MarketMetricProductMatch
 
 
 class ProductSort(StrEnum):
@@ -115,6 +116,8 @@ class MarketDataRequest(MarketIntelligenceModel):
     market: NonEmptyStr
     category: NonEmptyStr
     keyword: NonEmptyStr
+    market_metric_batch_id: NonEmptyStr | None = None
+    market_metric_product_match: MarketMetricProductMatch | None = None
     start_time: datetime | None = None
     end_time: datetime | None = None
 

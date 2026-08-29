@@ -17,6 +17,9 @@ from app.domain import (
 )
 from app.llm import LLMClientError, LLMMessage, StructuredLLMClient
 from app.modules.market_intelligence.dataset_availability import DatasetAvailability
+from app.modules.market_intelligence.market_metric_product_matcher import (
+    MarketMetricProductMatcher,
+)
 from app.modules.market_intelligence.data_source_availability import (
     MarketDataSourceAvailability,
 )
@@ -24,6 +27,7 @@ from app.modules.market_intelligence.schemas import (
     DataSourceMode,
     MarketIntelligenceBusinessContext,
     MarketIntelligenceRequest,
+    MarketMetricBatchStatus,
     ProductSort,
     ProfitCalculatorParameters,
 )
@@ -31,6 +35,7 @@ from app.modules.market_intelligence.schemas.common import MarketIntelligenceMod
 from app.modules.market_intelligence.schemas.request import CollectionOptions
 from app.modules.task_center.input_dispatcher import TaskInputValidationError
 from app.prompts.market_intelligence import build_input_extraction_prompt
+from app.repositories.market_metric_repository import MarketMetricRepository
 
 
 logger = logging.getLogger(__name__)
@@ -65,10 +70,14 @@ class MarketIntelligenceInputExtractor:
         availability: DatasetAvailability,
         llm_client: StructuredLLMClient | None = None,
         data_sources: MarketDataSourceAvailability | None = None,
+        market_metric_repository: MarketMetricRepository | None = None,
+        market_metric_product_matcher: MarketMetricProductMatcher | None = None,
     ) -> None:
         self.availability = availability
         self.llm_client = llm_client
         self.data_sources = data_sources
+        self.market_metric_repository = market_metric_repository
+        self.market_metric_product_matcher = market_metric_product_matcher
 
     def preview(
         self,
@@ -180,6 +189,7 @@ class MarketIntelligenceInputExtractor:
             ) from exc
 
         request = context.market_intelligence_request
+        request = self._validate_market_metric_selection(payload, context, request)
         if request.data_source_mode is DataSourceMode.OFFICIAL_API:
             if self.data_sources is not None and self.data_sources.is_supported(
                 request,
@@ -215,6 +225,92 @@ class MarketIntelligenceInputExtractor:
                     },
                 )
             )
+
+    def _validate_market_metric_selection(
+        self,
+        payload: TaskCreate,
+        context: MarketIntelligenceBusinessContext,
+        request: MarketIntelligenceRequest,
+    ) -> MarketIntelligenceRequest:
+        if request.market_metric_batch_id is None:
+            if request.market_metric_product_match is None:
+                return request
+            request = request.model_copy(update={"market_metric_product_match": None})
+            payload.business_context = context.model_copy(
+                update={"market_intelligence_request": request}
+            ).model_dump(mode="json")
+            return request
+        if (
+            payload.tenant_id is None
+            or self.market_metric_repository is None
+            or self.market_metric_product_matcher is None
+        ):
+            raise self._market_metric_validation_error(
+                "MARKET_METRIC_PRODUCT_MATCH_UNAVAILABLE",
+                "当前无法验证所选宏观市场数据的商品一致性。",
+            )
+        try:
+            batch = self.market_metric_repository.get_batch(
+                request.market_metric_batch_id,
+                payload.tenant_id,
+            )
+        except KeyError as exc:
+            raise self._market_metric_validation_error(
+                "MARKET_METRIC_BATCH_NOT_FOUND",
+                "所选宏观市场数据批次不存在或不属于当前租户。",
+            ) from exc
+        if batch.status is not MarketMetricBatchStatus.APPROVED:
+            raise self._market_metric_validation_error(
+                "MARKET_METRIC_BATCH_NOT_APPROVED",
+                "所选宏观市场数据批次当前未通过审核。",
+            )
+        if (
+            batch.platform.casefold() != request.platforms[0].casefold()
+            or batch.market.upper() != request.market.upper()
+        ):
+            raise self._market_metric_validation_error(
+                "MARKET_METRIC_SCOPE_MISMATCH",
+                "所选宏观市场数据批次与当前平台或市场不一致。",
+            )
+        product_match = self.market_metric_product_matcher.match(
+            requested_category=request.category,
+            requested_keyword=request.keyword,
+            batch=batch,
+        )
+        if not self.market_metric_product_matcher.accepted(product_match):
+            raise self._market_metric_validation_error(
+                "MARKET_METRIC_PRODUCT_MISMATCH",
+                "所选宏观市场数据与本次分析商品不一致或无法确认一致。",
+                details={
+                    "decision": product_match.decision.value,
+                    "confidence": product_match.confidence,
+                    "reason": product_match.reason,
+                    "batch_id": batch.id,
+                },
+            )
+        request = request.model_copy(
+            update={"market_metric_product_match": product_match}
+        )
+        payload.business_context = context.model_copy(
+            update={"market_intelligence_request": request}
+        ).model_dump(mode="json")
+        return request
+
+    @staticmethod
+    def _market_metric_validation_error(
+        code: str,
+        message: str,
+        *,
+        details: dict | None = None,
+    ) -> TaskInputValidationError:
+        return TaskInputValidationError(
+            TaskError(
+                code=code,
+                message=message,
+                step="validate_input",
+                details=details or {},
+            )
+        )
 
     def _data_source_options(
         self,
@@ -413,15 +509,7 @@ class MarketIntelligenceInputExtractor:
                     field="profit_constraints",
                 )
             )
-        else:
-            warnings.append(
-                PreviewWarning(
-                    code="PROFIT_INPUT_MISSING",
-                    message="未提供利润参数，利润分析将以降级状态返回。",
-                    severity=PreviewWarningSeverity.INFO,
-                    field="profit_constraints",
-                )
-            )
+        # 利润测算是可选能力，完全未提供时无需提示或影响主分析状态。
         return None
 
 

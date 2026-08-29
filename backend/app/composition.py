@@ -3,6 +3,9 @@ from dataclasses import dataclass
 from app.core.config import Settings
 from app.graph.operations_graph import EcommerceOperationsGraph
 from app.modules.market_intelligence.composition import (
+    build_market_metric_file_service,
+    build_market_metric_query_service,
+    build_market_metric_upload_service,
     build_market_intelligence_components,
 )
 from app.modules.market_intelligence.overview import MarketOverviewService
@@ -12,7 +15,15 @@ from app.modules.task_center import (
     TaskInputDispatcher,
 )
 from app.repositories import SQLAlchemyTaskRepository
-from app.services import DashboardService, TaskPreviewService, TaskService
+from app.repositories.market_metric_repository import SQLAlchemyMarketMetricRepository
+from app.services import (
+    DashboardService,
+    MarketMetricFileService,
+    MarketMetricQueryService,
+    MarketMetricUploadService,
+    TaskPreviewService,
+    TaskService,
+)
 
 
 @dataclass(frozen=True)
@@ -21,6 +32,9 @@ class ApplicationContainer:
     task_preview_service: TaskPreviewService
     dashboard_service: DashboardService
     market_overview_service: MarketOverviewService
+    market_metric_upload_service: MarketMetricUploadService
+    market_metric_query_service: MarketMetricQueryService
+    market_metric_file_service: MarketMetricFileService
 
 
 def build_application_container(
@@ -56,7 +70,17 @@ def build_application_container(
         market_overview_service=MarketOverviewService(
             market.dataset_registry,
             task_repository,
+            market.commerce_registry,
+            SQLAlchemyMarketMetricRepository(session_factory),
         ),
+        market_metric_upload_service=build_market_metric_upload_service(
+            session_factory
+        ),
+        market_metric_query_service=build_market_metric_query_service(
+            session_factory,
+            market.product_matcher,
+        ),
+        market_metric_file_service=build_market_metric_file_service(settings),
     )
 
 
