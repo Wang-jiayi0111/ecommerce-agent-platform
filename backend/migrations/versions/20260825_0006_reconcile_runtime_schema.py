@@ -28,13 +28,50 @@ def _require_no_nulls(connection: sa.Connection, table: str, column: str) -> Non
         )
 
 
+def _has_table(connection: sa.Connection, table: str) -> bool:
+    return sa.inspect(connection).has_table(table)
+
+
+def _has_column(connection: sa.Connection, table: str, column: str) -> bool:
+    return column in {
+        item["name"] for item in sa.inspect(connection).get_columns(table)
+    }
+
+
 def upgrade() -> None:
     connection = op.get_bind()
 
-    # This legacy table has no runtime owner. Refuse to discard it if it contains data.
-    _require_no_rows(connection, "raw_source_snapshot", "legacy snapshots require archiving")
-    op.drop_table("raw_source_snapshot")
+    # Fresh databases already use the current snapshot schema. Legacy tables are
+    # reconciled only when their identifying table/column is present.
+    if _has_table(connection, "raw_source_snapshot"):
+        _require_no_rows(
+            connection,
+            "raw_source_snapshot",
+            "legacy snapshots require archiving",
+        )
+        op.drop_table("raw_source_snapshot")
 
+    op.drop_constraint(
+        "uq_market_report_id",
+        "market_intelligence_report",
+        type_="unique",
+    )
+    op.drop_index(
+        "ix_market_intelligence_report_report_id",
+        table_name="market_intelligence_report",
+    )
+    op.create_index(
+        "ix_market_intelligence_report_report_id",
+        "market_intelligence_report",
+        ["report_id"],
+        unique=True,
+    )
+
+    if _has_column(connection, "product_snapshot", "source_page_sha256"):
+        _upgrade_legacy_product_schema(connection)
+
+
+def _upgrade_legacy_product_schema(connection: sa.Connection) -> None:
     _require_no_nulls(connection, "collection_run", "task_id")
     op.alter_column(
         "collection_run",
@@ -64,22 +101,6 @@ def upgrade() -> None:
         existing_type=sa.String(64),
         existing_nullable=False,
         nullable=True,
-    )
-
-    op.drop_constraint(
-        "uq_market_report_id",
-        "market_intelligence_report",
-        type_="unique",
-    )
-    op.drop_index(
-        "ix_market_intelligence_report_report_id",
-        table_name="market_intelligence_report",
-    )
-    op.create_index(
-        "ix_market_intelligence_report_report_id",
-        "market_intelligence_report",
-        ["report_id"],
-        unique=True,
     )
 
     for column in (
